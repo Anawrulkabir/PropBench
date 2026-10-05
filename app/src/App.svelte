@@ -33,15 +33,15 @@
   <h1>Property calculator</h1>
   <form onsubmit={calculate} aria-busy={busy}>
     <label>
-      Fluid
+      <span>Fluid</span>
       <input name="fluid" bind:value={fluid} autocomplete="off" spellcheck="false" />
     </label>
     <label>
-      Temperature <span class="unit">K</span>
+      <span>Temperature <span class="unit">(K)</span></span>
       <input name="temperature" bind:value={temperature} inputmode="decimal" />
     </label>
     <label>
-      Pressure <span class="unit">MPa</span>
+      <span>Pressure <span class="unit">(MPa)</span></span>
       <input name="pressure" bind:value={pressure} inputmode="decimal" />
     </label>
     <button type="submit" disabled={busy}>{busy ? "Calculating…" : "Calculate"}</button>
