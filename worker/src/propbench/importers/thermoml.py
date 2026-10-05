@@ -17,7 +17,6 @@ from __future__ import annotations
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from pathlib import Path
 
 import numpy as np
 
@@ -31,7 +30,7 @@ from propbench.core import (
     identify_fluid,
     to_si,
 )
-from propbench.importers.tabular import ImportFileError
+from propbench.importers.tabular import ImportFileError, Source, source_binary, source_stem
 
 # ThermoML property names ("name, unit") → quantity
 _PROPERTIES: dict[str, Quantity] = {
@@ -61,10 +60,10 @@ class ThermoMLImport:
     warnings: list[str] = field(default_factory=list)
 
 
-def read_thermoml(path: str | Path) -> ThermoMLImport:
+def read_thermoml(path: Source) -> ThermoMLImport:
     """Read all supported pure-compound datasets from a ThermoML file."""
     try:
-        root = ET.parse(Path(path)).getroot()
+        root = ET.parse(source_binary(path)).getroot()
     except ET.ParseError as exc:
         raise ImportFileError(f"not a valid XML file: {exc}") from exc
     _strip_namespaces(root)
@@ -74,7 +73,7 @@ def read_thermoml(path: str | Path) -> ThermoMLImport:
     provenance = _provenance(root)
     compounds = _compounds(root)
     result = ThermoMLImport()
-    stem = Path(path).stem
+    stem = source_stem(path)
     for block in root.findall("PureOrMixtureData"):
         number = _text(block, "nPureOrMixtureDataNumber") or str(len(result.datasets) + 1)
         components = [_text(c, "RegNum/nOrgNum") for c in block.findall("Component")]

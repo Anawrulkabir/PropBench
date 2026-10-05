@@ -45,6 +45,11 @@ impl Engine {
         Ok(self.ensure_worker().await?.info.clone())
     }
 
+    /// Default time limit of one request.
+    pub fn request_timeout(&self) -> Duration {
+        self.config.request_timeout
+    }
+
     /// Versions reported by the running worker, if one is running.
     pub async fn worker_info(&self) -> Option<WorkerInfo> {
         self.worker
@@ -70,9 +75,15 @@ impl Engine {
 
     /// Send one JSON-RPC request to the worker and wait for its result.
     pub async fn call(&self, method: &str, params: Value) -> Result<Value, EngineError> {
+        self.call_with_timeout(method, params, self.config.request_timeout)
+            .await
+    }
+
+    /// Like `call`, with a time limit for this request (long fits and validation studies).
+    pub async fn call_with_timeout(&self, method: &str, params: Value, limit: Duration) -> Result<Value, EngineError> {
         let worker = self.ensure_worker().await?;
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        worker.call(id, method, &params, self.config.request_timeout).await
+        worker.call(id, method, &params, limit).await
     }
 
     /// Stop the worker: close its stdin so it exits by itself, and kill it if it does not.
@@ -402,10 +413,10 @@ mod tests {
 
     #[test]
     fn ready_is_parsed_and_protocol_checked() {
-        let ok = r#"{"jsonrpc":"2.0","method":"ready","params":{"protocol":1,"propbench":"0","python":"3.12","coolprop":"7"}}"#;
+        let ok = r#"{"jsonrpc":"2.0","method":"ready","params":{"protocol":2,"propbench":"0","python":"3.12","coolprop":"7"}}"#;
         assert_eq!(parse_ready(ok).unwrap().coolprop, "7");
-        let wrong = ok.replace("\"protocol\":1", "\"protocol\":2");
-        assert!(matches!(parse_ready(&wrong), Err(EngineError::Startup(m)) if m.contains("protocol 2")));
+        let wrong = ok.replace("\"protocol\":2", "\"protocol\":1");
+        assert!(matches!(parse_ready(&wrong), Err(EngineError::Startup(m)) if m.contains("protocol 1")));
         assert!(matches!(parse_ready("hello"), Err(EngineError::Startup(_))));
         assert!(matches!(
             parse_ready(r#"{"jsonrpc":"2.0","id":1,"result":1}"#),

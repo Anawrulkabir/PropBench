@@ -4,4 +4,6 @@ import sys
 
 from propbench.worker.server import main
 
-sys.exit(main())
+# Guarded: validation workers started with the "spawn" method import this module as __mp_main__ and must not serve.
+if __name__ == "__main__":
+    sys.exit(main())

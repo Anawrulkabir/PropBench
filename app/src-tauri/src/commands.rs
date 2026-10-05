@@ -1,7 +1,8 @@
 use std::sync::OnceLock;
 
-use pb_engine::{Engine, EngineConfig, EngineError, PropertyRequest, PropertyResult, WorkerCommand};
+use pb_engine::{Engine, EngineConfig, EngineError, Method, PropertyRequest, PropertyResult, WorkerCommand};
 use serde::Serialize;
+use serde_json::Value;
 use tauri::{AppHandle, Manager, Runtime};
 
 /// The engine, created on first use with the Python bundled with the app (`<resources>/python`; see
@@ -48,6 +49,7 @@ impl From<EngineError> for CommandError {
             EngineError::Timeout(_) => "timeout",
             EngineError::Protocol(_) | EngineError::Io(_) => "protocol",
             EngineError::Rpc { code, .. } if *code == EngineError::INVALID_PARAMS => "invalid_input",
+            EngineError::Rpc { code, .. } if *code == EngineError::PROPBENCH_ERROR => "propbench",
             EngineError::Rpc { .. } => "property",
         };
         Self {
@@ -65,6 +67,25 @@ pub async fn property<R: Runtime>(
     request: PropertyRequest,
 ) -> Result<PropertyResult, CommandError> {
     Ok(state.engine(&app)?.property(&request).await?)
+}
+
+/// One worker operation of protocol v2 (`pb_engine::Method`, e.g. `model.fit`) with JSON params. Only the methods
+/// in that whitelist can be called.
+#[tauri::command]
+pub async fn worker<R: Runtime>(
+    app: AppHandle<R>,
+    state: tauri::State<'_, AppEngine>,
+    method: String,
+    params: Option<Value>,
+) -> Result<Value, CommandError> {
+    let method = Method::from_name(&method).ok_or_else(|| CommandError {
+        kind: "invalid_input",
+        message: format!("unknown worker method `{method}`"),
+    })?;
+    Ok(state
+        .engine(&app)?
+        .invoke(method, params.unwrap_or(Value::Null))
+        .await?)
 }
 
 #[cfg(test)]

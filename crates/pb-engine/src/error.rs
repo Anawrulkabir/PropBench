@@ -33,4 +33,6 @@ impl EngineError {
     pub const INVALID_PARAMS: i64 = -32602;
     /// JSON-RPC error code of the worker: the backend could not compute the property.
     pub const BACKEND_ERROR: i64 = -32001;
+    /// JSON-RPC error code of the worker: bad data, model, file or fit (a PropBench domain error).
+    pub const PROPBENCH_ERROR: i64 = -32002;
 }

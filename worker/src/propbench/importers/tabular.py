@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import csv
+import io
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,35 @@ class ImportFileError(ValueError):
 
 
 @dataclass(frozen=True)
+class InMemoryFile:
+    """File content sent by the UI (no filesystem path needed); ``name`` gives the type and the dataset name."""
+
+    name: str
+    data: bytes = field(repr=False)
+
+
+Source = str | Path | InMemoryFile
+
+
+def source_suffix(source: Source) -> str:
+    return Path(source.name if isinstance(source, InMemoryFile) else source).suffix.lower()
+
+
+def source_stem(source: Source) -> str:
+    return Path(source.name if isinstance(source, InMemoryFile) else source).stem
+
+
+def source_text(source: Source) -> str:
+    if isinstance(source, InMemoryFile):
+        return source.data.decode("utf-8-sig")
+    return Path(source).read_text(encoding="utf-8-sig")
+
+
+def source_binary(source: Source) -> Path | io.BytesIO:
+    return io.BytesIO(source.data) if isinstance(source, InMemoryFile) else Path(source)
+
+
+@dataclass(frozen=True)
 class Table:
     """Cells of a sheet below a header row. ``row_numbers`` are 1-based file rows, for error messages."""
 
@@ -36,9 +66,9 @@ class Table:
             raise ImportFileError(f"no column '{name}' (columns: {', '.join(repr(h) for h in self.headers)})") from None
 
 
-def read_csv(path: str | Path, mapping: ImportMapping) -> Table:
+def read_csv(path: Source, mapping: ImportMapping) -> Table:
     """Read a delimited text file (delimiter sniffed unless the mapping sets one; UTF-8 with or without BOM)."""
-    text = Path(path).read_text(encoding="utf-8-sig")
+    text = source_text(path)
     delimiter = mapping.delimiter
     if delimiter is None:
         sample = "\n".join(text.splitlines()[:20])
@@ -50,11 +80,11 @@ def read_csv(path: str | Path, mapping: ImportMapping) -> Table:
     return _table(lines, mapping)
 
 
-def read_xlsx(path: str | Path, mapping: ImportMapping) -> Table:
+def read_xlsx(path: Source, mapping: ImportMapping) -> Table:
     """Read one sheet of an Excel workbook (the first sheet unless the mapping names one). Cached values are used."""
     from openpyxl import load_workbook  # imported lazily: only needed for Excel files
 
-    workbook = load_workbook(Path(path), read_only=True, data_only=True)
+    workbook = load_workbook(source_binary(path), read_only=True, data_only=True)
     try:
         if mapping.sheet is None:
             sheet = workbook.worksheets[0]
@@ -68,8 +98,48 @@ def read_xlsx(path: str | Path, mapping: ImportMapping) -> Table:
     return _table(lines, mapping)
 
 
-def read_table(path: str | Path, mapping: ImportMapping) -> Table:
-    suffix = Path(path).suffix.lower()
+@dataclass(frozen=True)
+class Preview:
+    """The first rows of a file as text, to set up a mapping. ``sheets`` lists an Excel workbook's sheets."""
+
+    rows: tuple[tuple[str, ...], ...]
+    sheets: tuple[str, ...]
+    sheet: str | None
+    delimiter: str | None
+
+
+def preview_file(path: Source, sheet: str | None = None, max_rows: int = 30) -> Preview:
+    """Raw cells (as text) of the first ``max_rows`` rows of a CSV or Excel file, without any mapping."""
+    suffix = source_suffix(path)
+    if suffix in CSV_SUFFIXES:
+        text = source_text(path)
+        sample = "\n".join(text.splitlines()[:20])
+        try:
+            delimiter = csv.Sniffer().sniff(sample, delimiters=",;\t|").delimiter
+        except csv.Error:
+            delimiter = ","
+        lines = list(csv.reader(text.splitlines()[:max_rows], delimiter=delimiter))
+        return Preview(tuple(tuple(c.strip() for c in line) for line in lines), (), None, delimiter)
+    if suffix in EXCEL_SUFFIXES:
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(source_binary(path), read_only=True, data_only=True)
+        try:
+            names = tuple(workbook.sheetnames)
+            if sheet is not None and sheet not in names:
+                raise ImportFileError(f"no sheet '{sheet}' (sheets: {', '.join(names)})")
+            ws = workbook[sheet] if sheet is not None else workbook.worksheets[0]
+            rows = []
+            for row in ws.iter_rows(values_only=True, max_row=max_rows):
+                rows.append(tuple("" if c is None else str(c) for c in row))
+        finally:
+            workbook.close()
+        return Preview(tuple(rows), names, ws.title, None)
+    raise ImportFileError(f"unsupported file type '{suffix}' (use {sorted(CSV_SUFFIXES | EXCEL_SUFFIXES)})")
+
+
+def read_table(path: Source, mapping: ImportMapping) -> Table:
+    suffix = source_suffix(path)
     if suffix in CSV_SUFFIXES:
         return read_csv(path, mapping)
     if suffix in EXCEL_SUFFIXES:
@@ -159,7 +229,7 @@ def table_to_dataset(
 
 
 def import_file(
-    path: str | Path,
+    path: Source,
     mapping: ImportMapping,
     *,
     fluid: str,
@@ -168,7 +238,7 @@ def import_file(
 ) -> Dataset:
     """Read a CSV or Excel file into a dataset. The dataset name defaults to the file name without extension."""
     table = read_table(path, mapping)
-    return table_to_dataset(table, mapping, name=name or Path(path).stem, fluid=fluid, provenance=provenance)
+    return table_to_dataset(table, mapping, name=name or source_stem(path), fluid=fluid, provenance=provenance)
 
 
 def _rows(table: Table):
