@@ -34,8 +34,8 @@ jobs:
           enable-cache: true
           cache-dependency-glob: worker/uv.lock
       - run: uv sync --project worker --frozen
-      - run: uv run --project worker ruff check
-      - run: uv run --project worker ruff format --check
+      - run: uv run --project worker ruff check worker
+      - run: uv run --project worker ruff format --check worker
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}

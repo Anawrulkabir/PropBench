@@ -61,7 +61,7 @@ Layout: `crates/pb-*` (Rust shell), `worker/` (Python package `propbench`, uv pr
 ## Commands
 - Worker environment: `uv sync --project worker` (uv-managed Python only; never the system Python)
 - Full check: `cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace
-  && uv run --project worker ruff check && uv run --project worker ruff format --check
+  && uv run --project worker ruff check worker && uv run --project worker ruff format --check worker
   && uv run --project worker pytest && (cd app && npm run check && npm test)`
 - Regression case only: `uv run --project worker pytest -k cf3i`
 - CLI: `cargo run -p pb-cli -- --help`

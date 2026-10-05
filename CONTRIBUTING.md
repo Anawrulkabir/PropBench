@@ -39,7 +39,7 @@ In development the engine uses `worker/.venv`. Set `PB_WORKER_PYTHON` to use ano
 
 ```bash
 cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace \
-  && uv run --project worker ruff check && uv run --project worker ruff format --check \
+  && uv run --project worker ruff check worker && uv run --project worker ruff format --check worker \
   && uv run --project worker pytest && (cd app && npm run check && npm test)
 ```
 
