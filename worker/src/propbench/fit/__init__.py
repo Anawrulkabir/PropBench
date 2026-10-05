@@ -6,7 +6,7 @@ Deviation convention (CLAUDE.md): ARD = 100·(exp - model)/model, positive when 
 
 from propbench.fit.bayes import BayesianLinearFit, bayesian_linear_fit
 from propbench.fit.data import FitData, fit_data
-from propbench.fit.leastsq import FitError, FitResult, fit
+from propbench.fit.leastsq import FitError, FitResult, Prepared, fit, prepare
 from propbench.fit.stats import Deviations, ard, deviations
 
 __all__ = [
@@ -15,9 +15,11 @@ __all__ = [
     "FitData",
     "FitError",
     "FitResult",
+    "Prepared",
     "ard",
     "bayesian_linear_fit",
     "deviations",
     "fit",
     "fit_data",
+    "prepare",
 ]

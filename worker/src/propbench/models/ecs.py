@@ -256,6 +256,29 @@ class PreparedECS:
     factor: np.ndarray  # F_eta per point (0 where rho = 0)
     _reference: CP.AbstractState
 
+    def subset(self, index: np.typing.ArrayLike) -> PreparedECS:
+        """The same prepared model restricted to some points (e.g. one cross-validation fold); no re-solving."""
+        i = np.asarray(index)
+        return PreparedECS(
+            self.model,
+            self.temperature[i],
+            self.molar_density[i],
+            self.t0[i],
+            self.rhomolar0[i],
+            self.factor[i],
+            self._reference,
+        )
+
+    def __getstate__(self) -> dict[str, object]:
+        # CoolProp AbstractState objects cannot be pickled; recreate the reference state in the receiving process
+        state = dict(self.__dict__)
+        del state["_reference"]
+        return state
+
+    def __setstate__(self, state: dict[str, object]) -> None:
+        self.__dict__.update(state)
+        self._reference = CP.AbstractState("HEOS", self.model.reference_fluid)
+
     def evaluate(self, values: Mapping[str, float] | None = None) -> np.ndarray:
         model = self.model.with_params(values) if values else self.model
         eta = model.dilute(self.temperature)

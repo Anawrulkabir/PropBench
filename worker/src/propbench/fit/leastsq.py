@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 from scipy.optimize import least_squares
@@ -57,11 +57,26 @@ class FitResult:
         }
 
 
-def evaluator(model: Model, data: FitData) -> Callable[[Mapping[str, float]], np.ndarray]:
+class Prepared(Protocol):
+    """A model with state-dependent work done once for fixed states (see ``ECSViscosity.prepare``)."""
+
+    def evaluate(self, values: Mapping[str, float] | None = None) -> np.ndarray: ...
+
+    def subset(self, index: np.typing.ArrayLike) -> Prepared: ...
+
+
+def prepare(model: Model, data: FitData) -> Prepared | None:
+    """``model.prepare`` at the states of ``data`` if the model offers it, else None."""
+    method = getattr(model, "prepare", None)
+    return method(data.temperature, data.molar_density) if callable(method) else None
+
+
+def evaluator(
+    model: Model, data: FitData, prepared: Prepared | None = None
+) -> Callable[[Mapping[str, float]], np.ndarray]:
     """Fast evaluation for a fixed set of states: models may offer ``prepare`` (e.g. ECS caches conformal states)."""
-    prepare = getattr(model, "prepare", None)
-    if callable(prepare):
-        prepared = prepare(data.temperature, data.molar_density)
+    prepared = prepared if prepared is not None else prepare(model, data)
+    if prepared is not None:
         return prepared.evaluate
     return lambda values: model.with_params(values).predict(data.temperature, data.molar_density)
 
@@ -75,32 +90,40 @@ def fit(
     multistart: int = 0,
     seed: int = 0,
     max_nfev: int | None = None,
+    prepared: Prepared | None = None,
 ) -> FitResult:
-    """Fit the free parameters of ``model`` to ``data``. ``multistart`` extra starts are drawn with a seeded PCG64."""
+    """Fit the free parameters of ``model`` to ``data``. ``multistart`` extra starts are drawn with a seeded PCG64.
+
+    ``prepared`` (from ``prepare(model, data)``, possibly a ``subset``) must match the states of ``data``.
+    Scale factors are fitted for every dataset present in ``data`` except the first present one (the reference).
+    """
     names = free_names(model)
-    n_sets = len(data.dataset_names)
-    use_scales = scale_factors and n_sets > 1
+    present = np.unique(data.dataset_index)
+    scaled = present[1:]
+    n_scaled = len(scaled)
+    use_scales = scale_factors and n_scaled > 0
     if not names and not use_scales:
         raise FitError("the model has no free parameters")
     lower, upper = free_bounds(model)
     x0 = np.array([model.params()[n].value for n in names])
     if use_scales:
-        lower = np.concatenate([lower, np.full(n_sets - 1, 0.5)])
-        upper = np.concatenate([upper, np.full(n_sets - 1, 2.0)])
-        x0 = np.concatenate([x0, np.ones(n_sets - 1)])
+        lower = np.concatenate([lower, np.full(n_scaled, 0.5)])
+        upper = np.concatenate([upper, np.full(n_scaled, 2.0)])
+        x0 = np.concatenate([x0, np.ones(n_scaled)])
     if weighted and data.relative_uncertainty is not None:
         weights = 1.0 / data.relative_uncertainty
         is_weighted = True
     else:
         weights = np.ones(len(data))
         is_weighted = False
-    evaluate = evaluator(model, data)
+    evaluate = evaluator(model, data, prepared)
     k = len(names)
 
     def scales(x: np.ndarray) -> np.ndarray:
         if not use_scales:
             return np.ones(len(data))
-        s = np.concatenate([[1.0], x[k:]])
+        s = np.ones(len(data.dataset_names))
+        s[scaled] = x[k:]
         return s[data.dataset_index]
 
     def residuals(x: np.ndarray) -> np.ndarray:
@@ -140,7 +163,7 @@ def fit(
     except np.linalg.LinAlgError:
         cov = np.full((len(best.x), len(best.x)), np.nan)
     errors = np.sqrt(np.clip(np.diag(cov), 0.0, None))
-    scale_values = {data.dataset_names[j]: float(best.x[k + j - 1]) for j in range(1, n_sets)} if use_scales else {}
+    scale_values = {data.dataset_names[j]: float(best.x[k + i]) for i, j in enumerate(scaled)} if use_scales else {}
     predicted = evaluate(values) * scales(best.x)
     return FitResult(
         model=fitted,
