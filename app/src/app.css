@@ -1,31 +1,200 @@
+/* Classic desktop workbench theme (design/mockups): grey 3-D face, navy selection, Tahoma 11 px. */
 :root {
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --text: #1b1f24;
-  --muted: #5b6470;
-  --border: #d5dae1;
-  --accent: #1f6feb;
-  --accent-text: #ffffff;
-  --error: #b42318;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  font-size: 15px;
+  --face: #d4d0c8;
+  --face-dark: #c4c0b8;
+  --field: #f8f7f2;
+  --hilite: #ffffff;
+  --shadow: #808080;
+  --dark: #404040;
+  --grid: #e3e0d6;
+  --navy: #0a246a;
+  --navy-text: #ffffff;
+  --panel-title: #a6b4cf;
+  --select: #c9d4ea;
+  --text: #000000;
+  --muted: #555555;
+  --ok: #0b5a1e;
+  --warn: #8a5a00;
+  --error: #a4161a;
+  --note: #fbf3d0;
+  --mono: "IBM Plex Mono", "Lucida Console", Consolas, "DejaVu Sans Mono", monospace;
+  font-family: Tahoma, "Segoe UI", Verdana, "DejaVu Sans", sans-serif;
+  font-size: 11px;
   color: var(--text);
-  background: var(--bg);
+  background: var(--face);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #15181c;
-    --surface: #1e2227;
-    --text: #e6e9ed;
-    --muted: #9aa4b1;
-    --border: #353b43;
-    --accent: #4c8dff;
-    --error: #ff8a80;
-  }
+* {
+  box-sizing: border-box;
 }
 
-body {
+html,
+body,
+#app {
+  height: 100%;
   margin: 0;
-  background: var(--bg);
+  overflow: hidden;
+  background: var(--face);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--text);
+}
+
+/* raised 3-D button */
+.btn {
+  min-height: 23px;
+  padding: 2px 12px;
+  background: var(--face);
+  border: 1px solid;
+  border-color: var(--hilite) var(--dark) var(--dark) var(--hilite);
+  box-shadow: inset -1px -1px 0 var(--shadow);
+  cursor: default;
+  white-space: nowrap;
+}
+.btn:active:not(:disabled) {
+  border-color: var(--dark) var(--hilite) var(--hilite) var(--dark);
+  box-shadow: inset 1px 1px 0 var(--shadow);
+}
+.btn:disabled {
+  color: var(--shadow);
+  text-shadow: 1px 1px 0 var(--hilite);
+}
+.btn.default {
+  outline: 1px solid var(--text);
+}
+.btn:focus-visible,
+.field:focus-visible,
+select:focus-visible {
+  outline: 1px dotted var(--text);
+  outline-offset: -4px;
+}
+
+/* sunken field */
+.field,
+select.field {
+  height: 21px;
+  padding: 1px 4px;
+  background: var(--field);
+  border: 1px solid;
+  border-color: var(--shadow) var(--hilite) var(--hilite) var(--shadow);
+  box-shadow: inset 1px 1px 0 var(--dark);
+}
+.field.num {
+  font-family: var(--mono);
+  text-align: right;
+}
+textarea.field {
+  height: auto;
+}
+
+/* sunken well (plots, tables, lists) */
+.well {
+  background: var(--field);
+  border: 1px solid;
+  border-color: var(--shadow) var(--hilite) var(--hilite) var(--shadow);
+  box-shadow: inset 1px 1px 0 var(--dark);
+}
+
+/* group box */
+fieldset.group {
+  margin: 0;
+  padding: 6px 8px 8px;
+  border: 1px solid var(--shadow);
+  box-shadow: 1px 1px 0 var(--hilite), inset 1px 1px 0 var(--hilite);
+}
+fieldset.group > legend {
+  padding: 0 3px;
+}
+
+/* data grid */
+table.grid {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--field);
+}
+table.grid th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 2px 6px;
+  font-weight: 400;
+  text-align: left;
+  background: var(--face);
+  border: 1px solid;
+  border-color: var(--hilite) var(--shadow) var(--shadow) var(--hilite);
+}
+table.grid td {
+  padding: 1px 6px;
+  border-right: 1px solid var(--grid);
+  border-bottom: 1px solid var(--grid);
+  white-space: nowrap;
+}
+table.grid td.num,
+table.grid td.mono {
+  font-family: var(--mono);
+}
+table.grid tr.sel td {
+  background: var(--select);
+}
+table.grid tr.clickable {
+  cursor: default;
+}
+
+/* property sheet (two columns) */
+table.props {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--field);
+}
+table.props td {
+  padding: 2px 5px;
+  border-bottom: 1px solid var(--grid);
+  vertical-align: top;
+}
+table.props td:first-child {
+  width: 46%;
+  border-right: 1px solid var(--grid);
+}
+table.props td:last-child {
+  font-family: var(--mono);
+  word-break: break-word;
+}
+
+.muted {
+  color: var(--muted);
+}
+.ok {
+  color: var(--ok);
+}
+.warn {
+  color: var(--warn);
+}
+.error {
+  color: var(--error);
+}
+.mono {
+  font-family: var(--mono);
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.spacer {
+  flex: 1;
+}
+.notice {
+  padding: 4px 8px;
+  background: var(--note);
+  border: 1px solid #c9b46a;
+}
+.empty {
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
 }

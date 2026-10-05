@@ -236,3 +236,29 @@ def test_information_criteria():
     ic = information_criteria(10, 2, 5.0)
     assert ic["aic"] == pytest.approx(10 * np.log(0.5) + 4)
     assert ic["bic"] == pytest.approx(10 * np.log(0.5) + 2 * np.log(10))
+
+
+def test_dilute_limit_reports_unevaluable_states_without_failing():
+    class Partial(Toy):
+        def predict(self, temperature, molar_density):
+            rho = np.asarray(molar_density, float)
+            if np.any((rho > 0) & (np.asarray(temperature, float) < 250)):
+                from propbench.models import ModelError
+
+                raise ModelError("no conformal state")
+            return super().predict(temperature, molar_density)
+
+    check = check_dilute_limit(Partial(), [200.0, 300.0])
+    assert check.passed
+    assert check.not_evaluated == 1
+    assert "not evaluated" in check.message
+
+
+def test_cross_validation_of_a_model_without_free_parameters(data):
+    frozen = TRUTH.with_params({})
+    from dataclasses import replace
+
+    frozen = replace(frozen, parameters={k: replace(v, fixed=True) for k, v in frozen.parameters.items()})
+    cv = cross_validate(frozen, data, loso(data))
+    assert all(f.success for f in cv.folds)
+    assert cv.pooled.aard < 1e-10

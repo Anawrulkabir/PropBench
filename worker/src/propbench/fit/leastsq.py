@@ -20,7 +20,7 @@ from propbench.models.base import Model, ModelError, free_bounds, free_names
 
 
 class FitError(RuntimeError):
-    """The fit could not be carried out (no free parameters, model failure at every start, ...)."""
+    """The fit could not be carried out (model failure at every start, model not computable at the data, ...)."""
 
 
 @dataclass(frozen=True)
@@ -81,6 +81,34 @@ def evaluator(
     return lambda values: model.with_params(values).predict(data.temperature, data.molar_density)
 
 
+def _evaluate_only(model: Model, data: FitData, prepared: Prepared | None, seed: int, weighted: bool) -> FitResult:
+    """A model without free parameters (e.g. a predictive method such as Chung et al.) is only evaluated."""
+    try:
+        predicted = evaluator(model, data, prepared)({})
+    except ModelError as exc:
+        raise FitError(f"the model cannot be evaluated at the data: {exc}") from exc
+    is_weighted = weighted and data.relative_uncertainty is not None
+    w = 1.0 / data.relative_uncertainty if is_weighted and data.relative_uncertainty is not None else 1.0
+    residuals = w * (data.values - predicted) / predicted
+    return FitResult(
+        model=model,
+        values={},
+        standard_errors={},
+        covariance=np.zeros((0, 0)),
+        scale_factors={},
+        deviations=deviations(data.values, predicted),
+        ard=ard(data.values, predicted),
+        cost=float(0.5 * np.sum(residuals**2)),
+        success=True,
+        message="no free parameters: model evaluated as given",
+        nfev=1,
+        starts=0,
+        seed=seed,
+        weighted=is_weighted,
+        point_ids=data.point_ids,
+    )
+
+
 def fit(
     model: Model,
     data: FitData,
@@ -103,7 +131,7 @@ def fit(
     n_scaled = len(scaled)
     use_scales = scale_factors and n_scaled > 0
     if not names and not use_scales:
-        raise FitError("the model has no free parameters")
+        return _evaluate_only(model, data, prepared, seed, weighted)
     lower, upper = free_bounds(model)
     x0 = np.array([model.params()[n].value for n in names])
     if use_scales:

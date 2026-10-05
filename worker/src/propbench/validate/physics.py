@@ -86,17 +86,23 @@ def state_grid(
 
 
 def check_dilute_limit(model: Model, temperatures: Sequence[float], rel_tol: float = 1e-4) -> PhysicsCheck:
-    """At zero density the model must be finite, positive and continuous (no density term left over)."""
+    """At zero density the model must be finite, positive and continuous (no density term left over).
+
+    Continuity is checked against ρ = 10⁻³ mol/m³ where the model can be evaluated there; temperatures where it cannot
+    (e.g. no ECS conformal state in the very dilute gas, as in CoolProp) are reported as not evaluated.
+    """
     t = np.asarray(temperatures, dtype=float)
-    try:
-        zero = model.predict(t, np.zeros_like(t))
-        small = model.predict(t, np.full_like(t, 1e-3))
-    except ModelError as exc:
-        return PhysicsCheck("dilute-gas limit", False, len(t), f"model failed: {exc}")
-    bad = ~(np.isfinite(zero) & (zero > 0) & (np.abs(small / zero - 1) < rel_tol))
+    zero = predict_each(model, t, np.zeros_like(t))
+    small = predict_each(model, t, np.full_like(t, 1e-3))
+    bad = ~(np.isfinite(zero) & (zero > 0))
+    with np.errstate(invalid="ignore", divide="ignore"):
+        bad |= np.isfinite(small) & ~(np.abs(small / zero - 1) < rel_tol)
+    skipped = int((~np.isfinite(small) & ~bad).sum())
     violations = [(float(ti), 0.0) for ti in t[bad]]
     message = "finite, positive and continuous at zero density" if not bad.any() else f"{bad.sum()} temperatures fail"
-    return PhysicsCheck("dilute-gas limit", not bad.any(), len(t), message, violations)
+    if skipped:
+        message += f"; continuity not evaluated at {skipped} temperatures"
+    return PhysicsCheck("dilute-gas limit", not bad.any(), len(t), message, violations, skipped)
 
 
 def check_monotonic_density(model: Model, grid: StateGrid) -> PhysicsCheck:
