@@ -1,8 +1,10 @@
 name: CI
 
 on:
+  # Push only on main: a pull-request commit gets one run (the pull_request event), not two competing for the same
+  # scarce macOS runner. Branches without a PR can run CI by hand (workflow_dispatch).
   push:
-    branches: [main, "claude/**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
