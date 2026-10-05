@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hand-written test fixture following the ThermoML schema (https://trc.nist.gov/ThermoML/).
+     Values are R134a states computed with CoolProp (HEOS), not measurements. -->
+<DataReport xmlns="http://www.iupac.org/namespaces/ThermoML">
+  <Version><nVersionMajor>4</nVersionMajor><nVersionMinor>0</nVersionMinor></Version>
+  <Citation>
+    <eType>journal</eType>
+    <sAuthor>Doe, J.</sAuthor>
+    <sAuthor>Roe, R.</sAuthor>
+    <sPubName>J. Test Data</sPubName>
+    <yrPubYr>2024</yrPubYr>
+    <sTitle>Example viscosity and density of R134a</sTitle>
+    <sDOI>10.1000/test.0001</sDOI>
+  </Citation>
+  <Compound>
+    <RegNum><nOrgNum>1</nOrgNum></RegNum>
+    <sStandardInChI>InChI=1S/C2H2F4/c3-1-2(4,5)6/h1H2</sStandardInChI>
+    <sCommonName>1,1,1,2-tetrafluoroethane</sCommonName>
+    <sCommonName>R134a</sCommonName>
+    <sFormulaMolec>C2H2F4</sFormulaMolec>
+  </Compound>
+  <Compound>
+    <RegNum><nOrgNum>2</nOrgNum></RegNum>
+    <sCommonName>unobtainium</sCommonName>
+  </Compound>
+
+  <!-- 1: viscosity, T and p as variables, expanded uncertainties -->
+  <PureOrMixtureData>
+    <nPureOrMixtureDataNumber>1</nPureOrMixtureDataNumber>
+    <Component><RegNum><nOrgNum>1</nOrgNum></RegNum></Component>
+    <PhaseID><ePhase>Liquid</ePhase></PhaseID>
+    <Property>
+      <nPropNumber>1</nPropNumber>
+      <Property-MethodID>
+        <PropertyGroup>
+          <TransportProp>
+            <ePropName>Viscosity, Pa*s</ePropName>
+            <eMethodName>Vibrating wire</eMethodName>
+          </TransportProp>
+        </PropertyGroup>
+      </Property-MethodID>
+      <PropPhaseID><ePropPhase>Liquid</ePropPhase></PropPhaseID>
+      <CombinedUncertainty>
+        <nCombUncertAssessNum>1</nCombUncertAssessNum>
+        <nCombUncertLevOfConfid>95</nCombUncertLevOfConfid>
+      </CombinedUncertainty>
+    </Property>
+    <Variable>
+      <nVarNumber>1</nVarNumber>
+      <VariableID><VariableType><eTemperature>Temperature, K</eTemperature></VariableType></VariableID>
+    </Variable>
+    <Variable>
+      <nVarNumber>2</nVarNumber>
+      <VariableID><VariableType><ePressure>Pressure, kPa</ePressure></VariableType></VariableID>
+    </Variable>
+    <NumValues>
+      <VariableValue><nVarNumber>1</nVarNumber><nVarValue>300.00</nVarValue></VariableValue>
+      <VariableValue><nVarNumber>2</nVarNumber><nVarValue>1000.0</nVarValue></VariableValue>
+      <PropertyValue>
+        <nPropNumber>1</nPropNumber>
+        <nPropDigits>4</nPropDigits>
+        <nPropValue>0.0001916</nPropValue>
+        <CombinedUncertainty><nCombUncertAssessNum>1</nCombUncertAssessNum><nCombExpandUncertValue>0.0000038</nCombExpandUncertValue></CombinedUncertainty>
+      </PropertyValue>
+    </NumValues>
+    <NumValues>
+      <VariableValue><nVarNumber>1</nVarNumber><nVarValue>280.00</nVarValue></VariableValue>
+      <VariableValue><nVarNumber>2</nVarNumber><nVarValue>2000.0</nVarValue></VariableValue>
+      <PropertyValue>
+        <nPropNumber>1</nPropNumber>
+        <nPropDigits>4</nPropDigits>
+        <nPropValue>0.0002503</nPropValue>
+        <CombinedUncertainty><nCombUncertAssessNum>1</nCombUncertAssessNum><nCombExpandUncertValue>0.0000050</nCombExpandUncertValue></CombinedUncertainty>
+      </PropertyValue>
+    </NumValues>
+  </PureOrMixtureData>
+
+  <!-- 2: mass density, pressure as a constraint, standard uncertainties -->
+  <PureOrMixtureData>
+    <nPureOrMixtureDataNumber>2</nPureOrMixtureDataNumber>
+    <Component><RegNum><nOrgNum>1</nOrgNum></RegNum></Component>
+    <Property>
+      <nPropNumber>1</nPropNumber>
+      <Property-MethodID>
+        <PropertyGroup>
+          <VolumetricProp>
+            <ePropName>Mass density, kg/m3</ePropName>
+            <eMethodName>Vibrating tube method</eMethodName>
+          </VolumetricProp>
+        </PropertyGroup>
+      </Property-MethodID>
+      <PropPhaseID><ePropPhase>Liquid</ePropPhase></PropPhaseID>
+    </Property>
+    <Constraint>
+      <nConstraintNumber>1</nConstraintNumber>
+      <ConstraintID><ConstraintType><ePressure>Pressure, kPa</ePressure></ConstraintType></ConstraintID>
+      <nConstraintValue>1000.0</nConstraintValue>
+    </Constraint>
+    <Variable>
+      <nVarNumber>1</nVarNumber>
+      <VariableID><VariableType><eTemperature>Temperature, K</eTemperature></VariableType></VariableID>
+    </Variable>
+    <NumValues>
+      <VariableValue><nVarNumber>1</nVarNumber><nVarValue>300.00</nVarValue></VariableValue>
+      <PropertyValue>
+        <nPropNumber>1</nPropNumber>
+        <nPropValue>1201.53</nPropValue>
+        <PropUncertainty><nUncertAssessNum>1</nUncertAssessNum><nStdUncertValue>0.25</nStdUncertValue></PropUncertainty>
+      </PropertyValue>
+    </NumValues>
+    <NumValues>
+      <VariableValue><nVarNumber>1</nVarNumber><nVarValue>280.00</nVarValue></VariableValue>
+      <PropertyValue>
+        <nPropNumber>1</nPropNumber>
+        <nPropValue>1274.52</nPropValue>
+        <PropUncertainty><nUncertAssessNum>1</nUncertAssessNum><nStdUncertValue>0.25</nStdUncertValue></PropUncertainty>
+      </PropertyValue>
+    </NumValues>
+  </PureOrMixtureData>
+
+  <!-- 3: a binary mixture (not supported yet: warning) -->
+  <PureOrMixtureData>
+    <nPureOrMixtureDataNumber>3</nPureOrMixtureDataNumber>
+    <Component><RegNum><nOrgNum>1</nOrgNum></RegNum></Component>
+    <Component><RegNum><nOrgNum>2</nOrgNum></RegNum></Component>
+  </PureOrMixtureData>
+
+  <!-- 4: an unsupported property (warning) -->
+  <PureOrMixtureData>
+    <nPureOrMixtureDataNumber>4</nPureOrMixtureDataNumber>
+    <Component><RegNum><nOrgNum>1</nOrgNum></RegNum></Component>
+    <Property>
+      <nPropNumber>1</nPropNumber>
+      <Property-MethodID>
+        <PropertyGroup>
+          <RefractionProp><ePropName>Refractive index (Na D-line)</ePropName></RefractionProp>
+        </PropertyGroup>
+      </Property-MethodID>
+    </Property>
+  </PureOrMixtureData>
+</DataReport>
