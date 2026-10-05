@@ -312,51 +312,55 @@ SRK −14.2 %, PC-SAFT +0.07 %; cubic speed of sound −18 %).
 | DWSIM | GPL-3.0 | VB.NET / C# | Inspiration only: plug-in design, CAPE-OPEN; scope is process simulation |
 | pychemqt | GPL-3.0 | Python / Qt | Inspiration and **external comparison tool**; **do not copy code** (GPL would bind PropBench) |
 
-**Decision (superseded in part by §0):** a new MIT-licensed application with a **Rust core**, using **FeOs** directly as a Rust crate (PC-SAFT,
-entropy-scaling transport, automatic differentiation via `num-dual`) and **CoolProp** through its C++ library via FFI.
-The desktop interface uses **Tauri** (Rust backend, lightweight web-technology front end) for native installers on all
-three systems. A **Python package built with PyO3** exposes the same core, so researchers can script it and write plug-ins
-in Python, and ML models run through **ONNX Runtime** without a Python dependency at run time.
+**Decision (follows §0):** a new MIT-licensed application. **Tauri** (Rust shell, lightweight web-technology front end)
+provides the windows, scheduler, storage, environments, plug-in sandbox and process management, and native installers
+on all three systems. All science runs in a **Python worker** (the `propbench` package) that calls existing libraries:
+**CoolProp** and **FeOs** through their Python packages, SciPy/lmfit for fitting, ONNX Runtime for ML inference. There
+is no Rust science core, no C++ FFI and no PyO3 layer. The same `propbench` package is the scripting API
+(`import propbench`) and the home of Python plug-ins.
 
 ## 4. Architecture
 
 ```
-propbench/                      Cargo workspace
-├── crates/
-│   ├── pb-core/        # data model, units (uom), uncertainties, importers (csv, xlsx via calamine, ThermoML via quick-xml)
-│   ├── pb-thermo/      # Backend trait; FeOs adapter (native), CoolProp adapter (FFI to libCoolProp), cubic EoS
-│   ├── pb-models/      # Model trait; dilute gas, ECS, residual entropy scaling; check values as tests
-│   ├── pb-fit/         # least squares (argmin), multistart, scale factors, exact Bayesian linear fits
-│   ├── pb-validate/    # LOSO/LOTO/k-fold, physics checks, bootstrap (rayon-parallel), selection rules
-│   ├── pb-consist/     # overlap finder, dataset offsets, z-scores
-│   ├── pb-ml/          # ONNX Runtime inference (ort); training stays in Python, models exported to ONNX
-│   ├── pb-report/      # plots (plotters → SVG/PNG, up to 2500 dpi), docx/markdown/PDF writers
-│   ├── pb-export/      # CoolProp JSON, C/Python code, tables
-│   ├── pb-engine/      # sidecar process: scheduler, job graph, workers, cache, JSON-RPC server
+propbench/
+├── crates/             # Rust shell (Cargo workspace)
+│   ├── pb-engine/      # starts and supervises Python workers (JSON-RPC over stdio); later: scheduler, job graph, cache
 │   ├── pb-store/       # project file (SQLite), snapshots, audit log, atomic saves, cloud connectors
 │   ├── pb-env/         # per-project environments (uv), lockfiles, quotas, process limits
 │   ├── pb-vcs/         # Git integration, project mirror, GitHub sign-in
 │   ├── pb-ai/          # provider-agnostic AI client, confirmation of proposed changes
 │   ├── pb-remote/      # SSH connection to remote engines
-│   ├── pb-plugin/      # plug-in host: manifest, permissions, WASM runtime (wasmtime), Python bridge, registry client
+│   ├── pb-plugin/      # plug-in host: manifest, permissions, WASM runtime (wasmtime), registry client
 │   ├── pb-mcp/         # Model Context Protocol server exposing engine tools to external AI assistants
-│   ├── pb-cli/         # `propbench …` command line (clap) — every GUI action available here
-│   └── pb-py/          # Python bindings (PyO3 + maturin): scripting and Python plug-ins
-├── app/                # Tauri desktop app: src-tauri (Rust commands) + ui (TypeScript, Svelte, uPlot/Plotly)
-└── tests/              # integration tests, CF3I regression case, property-based tests (proptest), benches (criterion)
+│   └── pb-cli/         # `propbench …` command line (clap) — every GUI action available here
+├── worker/             # Python worker = `propbench` package (uv project; bundled standalone Python)
+│   └── src/propbench/
+│       ├── worker/     # JSON-RPC server (stdio)
+│       ├── backends/   # Backend protocol; CoolProp, FeOs, teqp, REFPROP (ctREFPROP) adapters
+│       ├── core/       # data model, units (pint), uncertainties, importers (csv, xlsx, ThermoML)
+│       ├── models/     # Model protocol; dilute gas, ECS, residual entropy scaling; check values as tests
+│       ├── fit/        # least squares (SciPy/lmfit), multistart, scale factors, exact Bayesian linear fits
+│       ├── validate/   # LOSO/LOTO/k-fold, physics checks, bootstrap, selection rules
+│       ├── consist/    # overlap finder, dataset offsets, z-scores
+│       ├── ml/         # ONNX Runtime inference; training via optional plug-ins
+│       ├── report/     # figures (matplotlib), docx/markdown/PDF writers
+│       └── export/     # CoolProp JSON, C/Python code, tables
+├── app/                # Tauri desktop app: src-tauri (Rust commands) + src (TypeScript, Svelte)
+└── docs/               # user documentation
 ```
 
-Rules: the core crates never depend on the app; every GUI action is a Tauri command calling a core function that is
-also reachable from the CLI and Python; heavy work runs on background threads (rayon/tokio) with progress and cancel;
-projects are plain files (SQLite via rusqlite + JSON via serde).
+Rules: the shell crates never depend on the app; every GUI action is a Tauri command calling a `pb-engine` function
+that is also reachable from `pb-cli` and from the `propbench` Python package; the UI never computes — all science
+runs in a worker process with progress and cancel; projects are plain files (SQLite via rusqlite + JSON via serde).
 
-**Stack:** Rust (stable) · FeOs · num-dual · nalgebra/faer · argmin · rayon · serde · rusqlite · uom · plotters ·
-ort (ONNX Runtime) · clap · PyO3/maturin · Tauri 2 + Svelte/TypeScript · cargo-nextest, proptest, criterion ·
-clippy, rustfmt · mdBook docs · GitHub Actions (Windows, macOS Intel + Apple Silicon, Ubuntu).
+**Stack.** Shell: Rust (stable) · Tauri 2 + Svelte/TypeScript · tokio · serde · thiserror · clap · rusqlite · gix ·
+wasmtime. Science (worker): Python (bundled, managed by uv) · CoolProp · FeOs · SciPy/lmfit · NumPy · pint ·
+matplotlib · ONNX Runtime (see §0). Quality: cargo test, pytest, clippy, rustfmt, ruff, pre-commit · GitHub Actions
+(Windows, macOS Intel + Apple Silicon, Ubuntu).
 
-**Why Rust:** compiled speed (bootstrap and multistart fits parallelised across all cores), memory safety without a
-garbage collector, single-binary distribution, and direct reuse of FeOs. **Trade-off:** slower development and fewer
-potential contributors than Python; the PyO3 bindings keep the door open for Python users.
+**Why Rust for the shell:** small native installers via Tauri, memory safety, robust process supervision and
+storage. **Why Python for science:** the libraries we integrate (§0) are there, and most researchers who will write
+models and plug-ins know Python. The compiled cores of those libraries provide the speed.
 
 ## 4a. Storage and sessions
 
@@ -373,17 +377,21 @@ potential contributors than Python; the PyO3 bindings keep the door open for Pyt
 
 ## 4b. Execution engine
 
-- **Separate process.** The Tauri app launches `pb-engine` as a sidecar and talks to it over JSON-RPC (stdio/IPC). The
-  UI never computes; an engine crash cannot freeze the UI or lose saved results. The CLI uses the same engine.
+- **Two process boundaries.** (1) `pb-engine` ↔ **Python worker**: the engine starts, supervises and restarts worker
+  processes and talks to them over JSON-RPC 2.0 (newline-delimited, stdio). A worker crash cannot freeze the UI.
+  (2) UI ↔ `pb-engine`: in M0 `pb-engine` is a library inside the Tauri process; from M1a it runs as a separate
+  sidecar process, so an engine crash cannot lose saved results either. The CLI uses the same engine.
 - **Scheduler.** A study becomes a job graph (fits → folds → bootstrap → physics checks → figures) with dependencies.
-- **Workers.** Independent jobs run in parallel (`rayon`); progress events streamed; pause, resume, cancel.
+- **Workers.** Independent jobs run in parallel in a pool of worker processes; progress events streamed; pause,
+  resume, cancel. ML inference (ONNX Runtime) also runs in the worker.
 - **Content-addressed cache.** Job key = hash(inputs, settings, code version, seed); unchanged jobs are reused.
 - **Determinism.** One explicit seed per job derived from the study seed; identical results on all OS.
-- **Python helper.** Started only for ML training plug-ins; inference runs in the engine via ONNX Runtime.
 - **Later (not v1):** `pb-engine serve` for headless runs on a workstation or cluster, with the desktop app as client.
 
 ## 4c. Core principle: isolated project environments
 
+- The installer ships a read-only **core environment** (bundled standalone Python + CoolProp + `propbench`) in which
+  the worker runs. Project environments (M1c) are built on top of it.
 - One environment per project under the app's data folder: Python (managed by `uv`), packages, caches. Nothing is
   installed system-wide; no admin rights; no changes to system PATH or system Python.
 - A lockfile in each project pins exact versions; the environment can be rebuilt on any machine.
@@ -407,9 +415,9 @@ potential contributors than Python; the PyO3 bindings keep the door open for Pyt
 |---|---|
 | **Self-contained** | Installer bundles everything, including a standalone Python (uv / python-build-standalone); users never install Python, Rust or Node |
 | **No admin rights** | Per-user install by default; works on locked-down university and company machines |
-| **Architectures** | Windows x64 + ARM64 · macOS Apple Silicon + Intel (universal) · Linux x64 + ARM64 |
+| **Architectures** | Windows x64 + ARM64 · macOS Apple Silicon + Intel (one installer per architecture, because each bundles its own Python) · Linux x64 + ARM64 (ARM64 Windows/Linux from M4d) |
 | **Signed, no warnings (planned, M4d)** | Windows: code signing (SignPath Foundation for OSS, or Azure Trusted Signing) · macOS: Developer ID signing + notarisation (Apple Developer account, ~US$99/yr) · Linux: signed checksums |
-| **Install channels** | Now: .msi · .dmg · AppImage/.deb from GitHub Releases, with checksums. Planned (M4d): winget, Homebrew cask, Flathub; download page detects the OS |
+| **Install channels** | Now: Windows per-user setup `.exe` (NSIS; no admin rights; a per-machine `.msi` needs admin and is revisited in M4d) · .dmg · AppImage (no admin) / .deb from GitHub Releases, with checksums. Planned (M4d): winget, Homebrew cask, Flathub; download page detects the OS |
 | **Web engine** | Tauri uses WebView2 (Windows, bundled bootstrapper), WebKit (macOS), WebKitGTK (Linux; pinned via Flatpak/AppImage) |
 | **Updates** | Signed auto-update (Tauri updater) with user consent; release channels stable/beta |
 | **Offline and proxies** | Offline installer with common components; system/university proxy settings honoured |
@@ -431,21 +439,23 @@ previous, Ubuntu LTS, Fedora, Debian) with no developer tools, and must pass: in
 ## 5. Getting started (development)
 
 ```bash
-# prerequisites: Rust (rustup), Node.js 20+, CoolProp shared library (script provided), Python 3.11+ for bindings
+# prerequisites: Rust (rustup), Node.js 20+, uv. No system Python is needed: uv downloads a managed Python.
 git clone https://github.com/<org>/propbench.git && cd propbench
-./scripts/fetch_coolprop.sh            # downloads/builds libCoolProp for this OS (Windows: scripts\fetch_coolprop.ps1)
-cargo nextest run --workspace          # all tests must pass before any commit
+uv sync --project worker               # Python worker environment (worker/.venv) with CoolProp
+uv run --project worker pytest worker  # worker tests
+cargo test --workspace                 # Rust tests, including the end-to-end RPC test
 cargo run -p pb-cli -- --help          # command line
-cd app && npm install && npm run tauri dev   # desktop app in development mode
-maturin develop -m crates/pb-py/Cargo.toml   # Python bindings into the active virtual environment
+cd app && npm ci && npm run tauri dev  # desktop app in development mode
 ```
+
+See CONTRIBUTING.md for the full check run before every commit.
 
 ## 6. Roadmap to beta
 
 | Milestone | Content | Exit test |
 |---|---|---|
-| **M0 Scaffold** | Cargo workspace, Tauri shell, CoolProp FFI build on 3 OS, CI, clippy/rustfmt, mdBook | Empty app and CLI build and start on all 3 OS in CI |
-| **M1 Core (CLI only)** | Data model, importers, CoolProp/FeOs backends, dilute gas, ECS, RES, fitting, LOSO/LOTO, physics checks, bootstrap | **CF₃I regression case reproduces the paper** (below) |
+| **M0 Scaffold** | Cargo workspace, Tauri shell, pb-engine supervising a Python worker (uv, bundled standalone Python), CoolProp `property` RPC, one calculator screen, pb-cli, CI on 3 OS (macOS Intel + Apple Silicon), rustfmt/clippy/ruff/pre-commit | R134a at 300 K, 1 MPa gives ρ = 1201.53 kg/m³ in pytest and in the end-to-end RPC test (dev and bundled Python); unsigned installers built on all 3 OS in CI |
+| **M1 Core (CLI only)** | In the Python worker, driven through pb-cli: data model, importers, CoolProp/FeOs backends, dilute gas, ECS, RES, fitting, LOSO/LOTO, physics checks, bootstrap | **CF₃I regression case reproduces the paper** (below) |
 | **M1a Engine and storage** | pb-engine sidecar, job graph, cache, project file with autosave/snapshots, atomic saves | Kill the engine mid-study: UI stays responsive, study resumes with no lost results |
 | **M1b Components** | Registry format, downloader with checksum verification, component manager dialog, offline install | Install/remove/update tested on 3 OS without network flakiness (local registry in CI) |
 | **M1c Environments** | Per-project environments, lockfiles, limits, terminal in environment | A script that installs packages leaves the system Python and PATH untouched on all 3 OS |
@@ -457,7 +467,7 @@ maturin develop -m crates/pb-py/Cargo.toml   # Python bindings into the active v
 | **M4b Integrations** | GitHub, AI assistant, code editor, remote engine over SSH | AI-proposed change is never applied without confirmation (test); remote job results identical to local |
 | **M4c Plug-in system** | Manifest, permissions, WASM host, Python plug-ins, signed registry, SDK and template | A sandboxed plug-in cannot read outside its declared folder (test); template plug-in passes the check-value harness |
 | **M4d Distribution** | Signed installers for all OS/architectures, winget/Homebrew/Flathub, auto-update, offline installer, clean-VM release gate | Release gate passes on all listed systems without developer tools |
-| **M5 Beta 0.1** | Installers, Python bindings on PyPI, tutorials, contributor guide, plug-in template, ONNX ML models | Beta checklist (section 7) fully green |
+| **M5 Beta 0.1** | Installers, `propbench` Python package on PyPI, mdBook documentation site, tutorials, contributor guide, plug-in template, ONNX ML models | Beta checklist (section 7) fully green |
 
 ## 7. Testing before beta 0.1 (all must pass)
 
@@ -469,9 +479,9 @@ maturin develop -m crates/pb-py/Cargo.toml   # Python bindings into the active v
 - [ ] Bootstrap and LOSO results identical for a fixed random seed on all 3 OS
 
 **Software quality**
-- [ ] Test coverage of core crates ≥ 85 % (cargo-llvm-cov); zero clippy warnings (`-D warnings`); `cargo fmt --check` clean; no `unsafe` outside the CoolProp FFI module
-- [ ] CI green on Windows, macOS (Intel + Apple Silicon) and Ubuntu; Python bindings tested on 3.11–3.13
-- [ ] Performance budgets (criterion): 1000 viscosity evaluations < 10 ms; LOSO of the CF₃I ECS model < 1 s; 200-sample bootstrap < 5 s on a laptop
+- [ ] Test coverage ≥ 85 % for the shell crates (cargo-llvm-cov) and the `propbench` worker package (pytest-cov); zero clippy warnings (`-D warnings`); `cargo fmt --check` and ruff clean; no `unsafe` code
+- [ ] CI green on Windows, macOS (Intel + Apple Silicon) and Ubuntu; worker tested on the bundled Python version
+- [ ] Performance budgets (measured inside the worker): 1000 viscosity evaluations < 10 ms as one batched call; LOSO of the CF₃I ECS model < 1 s; 200-sample bootstrap < 5 s on a laptop
 - [ ] Installers (MSI, DMG signed/notarised, AppImage/deb) start on clean machines with no Rust/Python/Node installed; app opens a project in < 2 s
 - [ ] GUI never freezes: every computation > 0.2 s runs in a worker with progress and cancel
 - [ ] Projects saved by version N open in version N+1 (file-format migration test)
@@ -479,7 +489,7 @@ maturin develop -m crates/pb-py/Cargo.toml   # Python bindings into the active v
 
 **Usability and contribution**
 - [ ] Three tutorials (CF₃I viscosity, a well-measured refrigerant, adding a new model plug-in) work end to end
-- [ ] A contributor can add a model either in Rust (copy `crates/pb-models/src/template.rs`) or in Python via the plug-in API, and pass its tests without touching other crates
+- [ ] A contributor can add a model in Python (copy `worker/src/propbench/models/template.py`, or via the plug-in API) and pass its tests without touching other modules
 - [ ] CONTRIBUTING.md, CODE_OF_CONDUCT.md, issue/PR templates, "good first issue" labels in place
 
 ## 8. Contributing

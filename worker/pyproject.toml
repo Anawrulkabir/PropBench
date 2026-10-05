@@ -1,0 +1,38 @@
+[project]
+name = "propbench"
+version = "0.0.1"
+description = "PropBench science worker: thermophysical property models of new fluids"
+readme = "README.md"
+license = "MIT"
+requires-python = "==3.12.*"
+dependencies = [
+    "CoolProp==7.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+    "pre-commit",
+]
+
+[build-system]
+requires = ["uv_build>=0.8.17,<0.9"]
+build-backend = "uv_build"
+
+[tool.uv]
+python-preference = "only-managed"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RUF", "PT"]
+
+[tool.ruff.format]
+quote-style = "double"
