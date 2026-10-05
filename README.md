@@ -442,7 +442,7 @@ previous, Ubuntu LTS, Fedora, Debian) with no developer tools, and must pass: in
 # prerequisites: Rust (rustup), Node.js 20+, uv. No system Python is needed: uv downloads a managed Python.
 git clone https://github.com/<org>/propbench.git && cd propbench
 uv sync --project worker               # Python worker environment (worker/.venv) with CoolProp
-uv run --project worker pytest         # worker tests
+uv run --project worker pytest worker  # worker tests
 cargo test --workspace                 # Rust tests, including the end-to-end RPC test
 cargo run -p pb-cli -- --help          # command line
 cd app && npm ci && npm run tauri dev  # desktop app in development mode

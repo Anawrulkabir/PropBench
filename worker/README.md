@@ -6,5 +6,5 @@ and §4b.
 
 ```bash
 uv sync --project worker
-uv run --project worker pytest
+uv run --project worker pytest worker
 ```

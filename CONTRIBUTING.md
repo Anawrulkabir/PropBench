@@ -40,7 +40,7 @@ In development the engine uses `worker/.venv`. Set `PB_WORKER_PYTHON` to use ano
 ```bash
 cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace \
   && uv run --project worker ruff check worker && uv run --project worker ruff format --check worker \
-  && uv run --project worker pytest && (cd app && npm run check && npm test)
+  && uv run --project worker pytest worker && (cd app && npm run check && npm test)
 ```
 
 ## Build the installers (unsigned)
@@ -52,6 +52,10 @@ cd app && npm run tauri build -- --config src-tauri/tauri.bundle.conf.json
 This first runs `scripts/bundle-python.mjs`, which puts a standalone Python with the locked worker dependencies in
 `app/src-tauri/resources/python/`. Installers land in `target/release/bundle/`. If you rebuild after changing the
 bundle, delete `target/release/bundle/` first: Tauri does not remove stale files from its staging folders.
+
+To check that the installers work, run `scripts/ci/test-installers.sh` from the repository root. It unpacks or
+installs them under `target/installed/` and runs the end-to-end tests against the Python inside (CI does this on
+every OS).
 
 ## Rules (summary of README §8 and CLAUDE.md)
 

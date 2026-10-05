@@ -54,16 +54,12 @@ jobs:
         include:
           - name: linux-x64
             os: ubuntu-22.04 # oldest supported glibc, so the AppImage runs on more distributions
-            python: app/src-tauri/resources/python/bin/python3
           - name: windows-x64
             os: windows-2025
-            python: app/src-tauri/resources/python/python.exe
           - name: macos-arm64
             os: macos-15
-            python: app/src-tauri/resources/python/bin/python3
           - name: macos-x64
             os: macos-15-intel
-            python: app/src-tauri/resources/python/bin/python3
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -90,6 +86,7 @@ jobs:
             !target/release/bundle/
             !target/release/python/
             !target/python-bundle/
+            !target/installed/
           key: cargo-${{ matrix.name }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
           restore-keys: cargo-${{ matrix.name }}-
       - uses: astral-sh/setup-uv@v7
@@ -106,7 +103,7 @@ jobs:
       # Python worker: uv-managed Python only (never the runner's system Python).
       - run: uv sync --project worker --frozen
       - name: Python tests (pytest, includes the acceptance value)
-        run: uv run --project worker pytest
+        run: uv run --project worker pytest worker
 
       # UI: install, build (catches bundler errors early) and unit tests.
       - run: npm ci
@@ -128,10 +125,10 @@ jobs:
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"
 
-      - name: End-to-end RPC and CLI tests against the bundled Python
-        env:
-          PB_WORKER_PYTHON: ${{ github.workspace }}/${{ matrix.python }}
-        run: cargo test -p pb-engine --test e2e_property && cargo test -p pb-cli
+      # Install/unpack the real installers (silent per-user NSIS install, mounted DMG with signature check, extracted
+      # .deb and AppImage) and run the end-to-end RPC and CLI tests against the Python inside each one.
+      - name: End-to-end RPC and CLI tests against the Python inside the installers
+        run: scripts/ci/test-installers.sh
 
       - name: Checksums
         working-directory: target/release/bundle
