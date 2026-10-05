@@ -39,6 +39,12 @@ FeOs (PC-SAFT) is an on-demand component (README §2b): it is installed for deve
 dependency group) but not bundled in the installer. Its tests skip locally if it is missing; CI sets
 `PB_REQUIRE_FEOS=1` so they always run there.
 
+## CI platforms
+
+During M1 development CI builds and tests on **macOS Apple Silicon only** (plus the Linux lint job), to keep runs
+fast. Windows, Linux and macOS Intel are commented out in `.github/workflows/ci.yml` and will be restored before
+the release builds; until then, code that behaves differently per OS is not tested on those platforms.
+
 ## Check before every commit
 
 ```bash
