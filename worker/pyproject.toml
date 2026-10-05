@@ -10,6 +10,7 @@ dependencies = [
     "numpy>=2.0",
     "openpyxl==3.1.5",
     "pint==0.26.1",
+    "scipy==1.18.1",
 ]
 
 [dependency-groups]

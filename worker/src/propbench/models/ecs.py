@@ -198,6 +198,31 @@ class ECSViscosity:
             eta[i] += background * np.sqrt(f) * h ** (-2.0 / 3.0) * np.sqrt(m / m0)
         return eta
 
+    def prepare(self, temperature: np.typing.ArrayLike, molar_density: np.typing.ArrayLike) -> PreparedECS:
+        """Solve the conformal states once; the result evaluates the model for any parameter values quickly.
+
+        The conformal state (T₀, ρ₀) depends only on the equations of state, not on ψ, σ, ε/k or k, so a fit needs it
+        once per data point. Each evaluation then costs one reference-fluid viscosity call per point.
+        """
+        t, rho = as_states(temperature, molar_density)
+        target = CP.AbstractState("HEOS", self.fluid)
+        reference = CP.AbstractState("HEOS", self.reference_fluid)
+        m, m0 = self._molar_masses
+        t0 = np.zeros_like(t)
+        rho0 = np.zeros_like(t)
+        for i, (ti, rhoi) in enumerate(zip(t, rho, strict=True)):
+            if rhoi == 0.0:
+                continue
+            try:
+                target.update(CP.DmolarT_INPUTS, rhoi, ti)
+                state = conformal_state(target, reference)
+            except ValueError as exc:
+                raise ModelError(f"ECS failed at T={ti} K, rho={rhoi} mol/m3: {exc}") from exc
+            t0[i], rho0[i] = state.t0, state.rhomolar0
+        with np.errstate(divide="ignore", invalid="ignore"):
+            factor = np.where(rho > 0, np.sqrt(t / t0) * (rho0 / rho) ** (-2.0 / 3.0) * np.sqrt(m / m0), 0.0)
+        return PreparedECS(self, t, rho, t0, rho0, factor, reference)
+
     def params(self) -> Mapping[str, Parameter]:
         return dict(self.parameters)
 
@@ -217,3 +242,30 @@ class ECSViscosity:
 
     def reference(self) -> str:
         return self.source
+
+
+@dataclass
+class PreparedECS:
+    """An ECS model with its conformal states solved for fixed states; ``evaluate`` takes new parameter values."""
+
+    model: ECSViscosity
+    temperature: np.ndarray
+    molar_density: np.ndarray
+    t0: np.ndarray
+    rhomolar0: np.ndarray
+    factor: np.ndarray  # F_eta per point (0 where rho = 0)
+    _reference: CP.AbstractState
+
+    def evaluate(self, values: Mapping[str, float] | None = None) -> np.ndarray:
+        model = self.model.with_params(values) if values else self.model
+        eta = model.dilute(self.temperature)
+        psi = model.psi(self.molar_density)
+        reference = self._reference
+        for i in np.flatnonzero(self.molar_density > 0):
+            try:
+                reference.update(CP.DmolarT_INPUTS, self.rhomolar0[i] * psi[i], self.t0[i])
+                c = reference.viscosity_contributions()
+            except ValueError as exc:
+                raise ModelError(f"reference viscosity failed at T0={self.t0[i]}: {exc}") from exc
+            eta[i] += (c["initial_density"] + c["residual"]) * self.factor[i]
+        return eta
