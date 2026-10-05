@@ -104,6 +104,8 @@ jobs:
       - run: uv sync --project worker --frozen
       - name: Python tests (pytest, includes the acceptance value)
         run: uv run --project worker pytest worker
+        env:
+          PB_REQUIRE_FEOS: "1" # the FeOs cross-check must run in CI, never skip
 
       # UI: install, build (catches bundler errors early) and unit tests.
       - run: npm ci
