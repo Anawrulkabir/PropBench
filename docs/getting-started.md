@@ -2,8 +2,8 @@
 
 ## Installation
 
-Download the installer for your system from GitHub Releases (Windows `.msi`, macOS `.dmg`, Linux `.AppImage` or
-`.deb`). No Python, Rust or administrator rights are needed.
+Download the installer for your system from GitHub Releases (Windows setup `.exe`, macOS `.dmg` for
+Apple Silicon or Intel, Linux `.AppImage` or `.deb`). No Python, Rust or administrator rights are needed.
 
 > **Pre-release notice.** PropBench is developed by one person and the installers are **not yet code-signed**.
 > Your system will warn you the first time you open it. This is expected; approve it once as described below.
@@ -19,12 +19,14 @@ Download the installer for your system from GitHub Releases (Windows `.msi`, mac
 *Advanced alternative (Terminal):* `xattr -dr com.apple.quarantine /Applications/PropBench.app`
 
 ### Windows (x64 or ARM64)
-1. Run the `.msi`. If **Windows protected your PC** (SmartScreen) appears, click **More info**, then **Run anyway**.
+1. Run `PropBench_*_x64-setup.exe`. It installs for your user only and needs no administrator rights. If **Windows
+   protected your PC** (SmartScreen) appears, click **More info**, then **Run anyway**.
 2. Finish the installer. Some antivirus programs may also ask for confirmation for an unsigned app.
 
 ### Linux
-- **AppImage:** `chmod +x PropBench-*.AppImage` then run it (or right-click › Properties › *Allow executing as program*).
-- **.deb (Ubuntu/Debian):** `sudo apt install ./propbench_*.deb`
+- **AppImage (no administrator rights):** `chmod +x PropBench-*.AppImage` then run it (or right-click › Properties ›
+  *Allow executing as program*).
+- **.deb (Ubuntu/Debian; needs administrator rights):** `sudo apt install ./propbench_*.deb`
 
 ### Verify the download (recommended)
 - macOS/Linux: `shasum -a 256 <file>` · Windows (PowerShell): `Get-FileHash <file> -Algorithm SHA256`
