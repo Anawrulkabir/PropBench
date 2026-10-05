@@ -20,34 +20,8 @@ env:
   NODE_VERSION: "22"
 
 jobs:
-  lint:
-    name: Lint (fmt, ruff, svelte-check)
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-      - name: Rust toolchain (from rust-toolchain.toml)
-        run: rustup toolchain install
-      - run: cargo fmt --all -- --check
-      - uses: astral-sh/setup-uv@v7
-        with:
-          version: ${{ env.UV_VERSION }}
-          enable-cache: true
-          cache-dependency-glob: worker/uv.lock
-      - run: uv sync --project worker --frozen
-      - run: uv run --project worker ruff check worker
-      - run: uv run --project worker ruff format --check worker
-      - uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: app/package-lock.json
-      - run: npm ci
-        working-directory: app
-      - run: npm run check
-        working-directory: app
-
   build:
-    name: Build and test (${{ matrix.name }})
+    name: Lint, build and test (${{ matrix.name }})
     strategy:
       fail-fast: false
       matrix:
@@ -60,9 +34,11 @@ jobs:
         #   - name: macos-x64
         #     os: macos-15-intel
         # scripts/ci/test-installers.sh and the Linux prerequisites step still support all of them.
+        # Lint runs in one job only (lint: true), so it needs no runner of its own.
         include:
           - name: macos-arm64
             os: macos-15
+            lint: true
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -79,6 +55,9 @@ jobs:
 
       - name: Rust toolchain (from rust-toolchain.toml)
         run: rustup toolchain install
+      - name: Lint - rustfmt
+        if: matrix.lint
+        run: cargo fmt --all -- --check
       - uses: actions/cache@v6
         with:
           path: |
@@ -105,6 +84,11 @@ jobs:
 
       # Python worker: uv-managed Python only (never the runner's system Python).
       - run: uv sync --project worker --frozen
+      - name: Lint - ruff
+        if: matrix.lint
+        run: |
+          uv run --project worker ruff check worker
+          uv run --project worker ruff format --check worker
       - name: Python tests (pytest, includes the acceptance value)
         run: uv run --project worker pytest worker
         env:
@@ -112,6 +96,10 @@ jobs:
 
       # UI: install, build (catches bundler errors early) and unit tests.
       - run: npm ci
+        working-directory: app
+      - name: Lint - svelte-check
+        if: matrix.lint
+        run: npm run check
         working-directory: app
       - run: npm run build
         working-directory: app

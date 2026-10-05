@@ -41,7 +41,7 @@ dependency group) but not bundled in the installer. Its tests skip locally if it
 
 ## CI platforms
 
-During M1 development CI builds and tests on **macOS Apple Silicon only** (plus the Linux lint job), to keep runs
+During M1 development CI lints, builds and tests in a single **macOS Apple Silicon** job, to keep runs
 fast. Windows, Linux and macOS Intel are commented out in `.github/workflows/ci.yml` and will be restored before
 the release builds; until then, code that behaves differently per OS is not tested on those platforms.
 
