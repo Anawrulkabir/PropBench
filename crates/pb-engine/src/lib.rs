@@ -6,10 +6,12 @@
 
 mod config;
 mod error;
+mod methods;
 mod rpc;
 mod worker;
 
 pub use config::{EngineConfig, WorkerCommand, bundled_python, resolve_worker_python};
 pub use error::EngineError;
+pub use methods::Method;
 pub use rpc::{PROTOCOL_VERSION, PropertyRequest, PropertyResult, WorkerInfo};
 pub use worker::Engine;

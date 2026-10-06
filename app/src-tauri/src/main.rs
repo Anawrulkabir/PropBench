@@ -12,7 +12,7 @@ use tauri::{Manager, RunEvent, Runtime};
 fn builder<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     builder
         .manage(commands::AppEngine::default())
-        .invoke_handler(tauri::generate_handler![commands::property])
+        .invoke_handler(tauri::generate_handler![commands::property, commands::worker])
 }
 
 fn main() -> ExitCode {
@@ -42,6 +42,10 @@ mod tests {
 
     /// Sends a command through Tauri's IPC exactly as `app/src/lib/api.ts` does, and runs it in the real worker.
     fn invoke(args: serde_json::Value) -> Result<serde_json::Value, serde_json::Value> {
+        invoke_cmd("property", args)
+    }
+
+    fn invoke_cmd(cmd: &str, args: serde_json::Value) -> Result<serde_json::Value, serde_json::Value> {
         let app = super::builder(mock_builder())
             .build(mock_context(noop_assets()))
             .unwrap();
@@ -51,7 +55,7 @@ mod tests {
         let response = get_ipc_response(
             &webview,
             InvokeRequest {
-                cmd: "property".into(),
+                cmd: cmd.into(),
                 callback: CallbackFn(0),
                 error: CallbackFn(1),
                 url: if cfg!(windows) {
@@ -85,5 +89,19 @@ mod tests {
         let err = invoke(json!({ "request": request })).unwrap_err();
         assert_eq!(err["kind"], "property");
         assert!(err["message"].as_str().unwrap().contains("NotAFluid"));
+    }
+
+    #[test]
+    fn worker_methods_reach_the_worker_over_ipc() {
+        let kinds = invoke_cmd("worker", json!({ "method": "model.kinds" })).unwrap();
+        assert!(kinds["kinds"].as_array().unwrap().len() >= 3, "{kinds}");
+        let err = invoke_cmd("worker", json!({ "method": "os.system", "params": {} })).unwrap_err();
+        assert_eq!(err["kind"], "invalid_input");
+        let err = invoke_cmd(
+            "worker",
+            json!({ "method": "model.default", "params": { "kind": "nope", "fluid": "R134a" } }),
+        )
+        .unwrap_err();
+        assert_eq!(err["kind"], "propbench");
     }
 }

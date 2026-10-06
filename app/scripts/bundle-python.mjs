@@ -57,10 +57,11 @@ if (!isWindows) {
 }
 
 // 3. Runtime dependencies exactly as locked in worker/uv.lock (hash-checked), then the propbench package itself.
+// --no-default-groups: only [project] dependencies; dev tools and on-demand components (e.g. the feos group) stay out.
 const python = pythonIn(outDir);
 const requirements = path.join(workDir, "requirements.txt");
 run("uv", [
-  "export", "--project", workerDir, "--frozen", "--no-dev", "--no-emit-project",
+  "export", "--project", workerDir, "--frozen", "--no-default-groups", "--no-emit-project",
   "--format", "requirements-txt", "--output-file", requirements,
 ]);
 const pipArgs = ["pip", "install", "--python", python, "--break-system-packages", "--no-config"];

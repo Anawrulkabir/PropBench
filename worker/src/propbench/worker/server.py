@@ -1,14 +1,17 @@
 """Newline-delimited JSON-RPC 2.0 server.
 
-Protocol (version 1):
+Protocol (version 2):
 
 * On start the worker sends one notification ``{"jsonrpc": "2.0", "method": "ready", "params": {...}}`` with the
   protocol, Python, propbench and backend versions.
-* Requests are single JSON objects, one per line, UTF-8. Batches are not supported.
-* Methods: ``property(fluid, pair, values, output)`` → ``{value, output, backend, backend_version}``. SI units.
+* Requests are single JSON objects, one per line, UTF-8. Batches are not supported. Params are always an object.
+* Methods: ``property(fluid, pair, values, output)`` → ``{value, output, backend, backend_version}`` (since v1), and
+  the operations of ``propbench.api`` listed in ``METHODS`` (since v2). SI units; NaN is sent as null.
+* Errors: -32602 invalid params, -32001 backend error, -32002 PropBench error (bad data, model, file, fit, ...).
 * The worker exits when stdin closes.
 """
 
+import inspect
 import json
 import platform
 import sys
@@ -16,10 +19,28 @@ from collections.abc import Callable
 from typing import IO, Any
 
 import propbench
+from propbench import api
 from propbench.backends import Backend, BackendError
 from propbench.backends.coolprop import CoolPropBackend
+from propbench.fit import FitError
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
+
+# RPC method → function of propbench.api (keyword arguments = params)
+METHODS: dict[str, Callable[..., dict[str, Any]]] = {
+    "fluids": api.fluids,
+    "properties": api.properties,
+    "dataset.preview": api.dataset_preview,
+    "dataset.import": api.dataset_import,
+    "dataset.check": api.dataset_check,
+    "model.kinds": api.model_kinds,
+    "model.default": api.model_default,
+    "model.predict": api.model_predict,
+    "model.fit": api.model_fit,
+    "study.validate": api.study_validate,
+    "selection.lock": api.selection_lock,
+    "selection.select": api.selection_select,
+}
 
 PARSE_ERROR = -32700
 INVALID_REQUEST = -32600
@@ -27,6 +48,7 @@ METHOD_NOT_FOUND = -32601
 INVALID_PARAMS = -32602
 INTERNAL_ERROR = -32603
 BACKEND_ERROR = -32001
+PROPBENCH_ERROR = -32002
 
 
 class RpcError(Exception):
@@ -40,6 +62,8 @@ class Server:
     def __init__(self, backend: Backend | None = None) -> None:
         self.backend: Backend = backend if backend is not None else CoolPropBackend()
         self.methods: dict[str, Callable[[Any], dict[str, Any]]] = {"property": self._property}
+        for name, function in METHODS.items():
+            self.methods[name] = _api_method(function)
 
     def ready_params(self) -> dict[str, Any]:
         import CoolProp
@@ -121,6 +145,29 @@ class Server:
             "backend": result.backend,
             "backend_version": result.backend_version,
         }
+
+
+def _api_method(function: Callable[..., dict[str, Any]]) -> Callable[[Any], dict[str, Any]]:
+    signature = inspect.signature(function)
+
+    def call(params: Any) -> dict[str, Any]:
+        if params is None:
+            params = {}
+        if not isinstance(params, dict):
+            raise RpcError(INVALID_PARAMS, "params must be an object")
+        try:
+            signature.bind(**params)
+        except TypeError as exc:
+            raise RpcError(INVALID_PARAMS, str(exc)) from exc
+        try:
+            return function(**params)
+        except BackendError as exc:
+            raise RpcError(BACKEND_ERROR, str(exc)) from exc
+        except (ValueError, FitError, OSError, KeyError) as exc:
+            # every PropBench domain error is a ValueError (DatasetError, ModelError, MappingError, ...)
+            raise RpcError(PROPBENCH_ERROR, str(exc)) from exc
+
+    return call
 
 
 def _valid_id(request_id: Any) -> bool:

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Version of the stdio protocol spoken by `propbench.worker`; checked against the worker's `ready` notification.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 
 /// One property at one state, SI units. `pair` is a CoolProp input-pair name (e.g. `PT_INPUTS`) and `values`
 /// follow that pair's order; `output` is a CoolProp parameter name (e.g. `Dmass`).

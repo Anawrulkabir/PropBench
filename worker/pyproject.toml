@@ -6,7 +6,11 @@ readme = "README.md"
 license = "MIT"
 requires-python = "==3.12.*"
 dependencies = [
-    "CoolProp==7.1.0",
+    "CoolProp==8.0.0",
+    "numpy>=2.0",
+    "openpyxl==3.1.5",
+    "pint==0.26.1",
+    "scipy==1.18.1",
 ]
 
 [dependency-groups]
@@ -14,6 +18,12 @@ dev = [
     "pytest",
     "ruff",
     "pre-commit",
+    "hypothesis",
+]
+# FeOs (PC-SAFT, entropy scaling) is an on-demand component (README §2b): installed for development and CI, not bundled
+# in the installer until the component manager exists (M1b).
+feos = [
+    "feos==0.10.1",
 ]
 
 [build-system]
@@ -22,10 +32,14 @@ build-backend = "uv_build"
 
 [tool.uv]
 python-preference = "only-managed"
+default-groups = ["dev", "feos"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers --import-mode=importlib"
+markers = [
+    "feos: needs the optional FeOs backend (dependency group 'feos')",
+]
 
 [tool.ruff]
 line-length = 120
@@ -33,6 +47,8 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RUF", "PT"]
+# Greek letters are the physical symbols (ρ density, σ surface tension, µ micro).
+allowed-confusables = ["ρ", "σ", "µ", "μ", "∗", "·"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -1,140 +1,228 @@
 <script lang="ts">
-  import { computeProperty, densityRequest, errorMessage, type PropertyResult } from "./lib/api";
-  import { formatValue } from "./lib/units";
+  // Main window (design/mockups/01_Main): toolbar, project tree, tabbed work area, properties, output, status bar.
+  // The UI never computes: every action goes through the worker (lib/project.svelte.ts → Tauri → pb-engine).
+  import CalculatorView from "./components/CalculatorView.svelte";
+  import DataView from "./components/DataView.svelte";
+  import FitView from "./components/FitView.svelte";
+  import ImportDialog from "./components/ImportDialog.svelte";
+  import OutputPanel from "./components/OutputPanel.svelte";
+  import ProjectTree from "./components/ProjectTree.svelte";
+  import PropertiesPanel from "./components/PropertiesPanel.svelte";
+  import ResultsView from "./components/ResultsView.svelte";
+  import StudyView from "./components/StudyView.svelte";
+  import { project, type View } from "./lib/project.svelte";
 
-  let fluid = $state("R134a");
-  let temperature = $state("300");
-  let pressure = $state("1");
-  let busy = $state(false);
-  let result: PropertyResult | null = $state(null);
-  let error: string | null = $state(null);
+  const TABS: { id: View; label: string }[] = [
+    { id: "data", label: "Data check" },
+    { id: "fit", label: "Fit" },
+    { id: "study", label: "Study setup" },
+    { id: "results", label: "Results" },
+    { id: "calculator", label: "Calculator" },
+  ];
 
-  async function calculate(event: SubmitEvent) {
-    event.preventDefault();
-    result = null;
-    error = null;
-    const form = densityRequest(fluid, temperature, pressure);
-    if (!form.ok) {
-      error = form.error;
-      return;
-    }
-    busy = true;
-    try {
-      result = await computeProperty(form.request);
-    } catch (err) {
-      error = errorMessage(err);
-    } finally {
-      busy = false;
-    }
+  const hasData = $derived(project.datasets.length > 0);
+  const hasModels = $derived(project.candidates.length > 0);
+
+  function fitSelected() {
+    project.view = "fit";
+    const id = project.selected?.type === "candidate" ? project.selected.id : project.candidates[0]?.id;
+    if (id) project.fit(id);
   }
 </script>
 
-<main>
-  <h1>Property calculator</h1>
-  <form onsubmit={calculate} aria-busy={busy}>
-    <label>
-      Fluid
-      <input name="fluid" bind:value={fluid} autocomplete="off" spellcheck="false" />
+<div class="window">
+  <div class="toolbar row">
+    <button class="tool btn" onclick={() => (project.importOpen = true)} disabled={!!project.busy}>
+      <span class="ico">⤓</span>Import
+    </button>
+    <button class="tool btn" onclick={() => project.checkData()} disabled={!!project.busy || !hasData}>
+      <span class="ico">✓</span>Check
+    </button>
+    <span class="sep"></span>
+    <button class="tool btn" onclick={fitSelected} disabled={!!project.busy || !hasModels}>
+      <span class="ico">⟋</span>Fit
+    </button>
+    <button
+      class="tool btn primary"
+      onclick={() => {
+        project.view = "study";
+        project.runStudy();
+      }}
+      disabled={!!project.busy || !hasModels}
+    >
+      <span class="ico">▷</span>Validate
+    </button>
+    <span class="sep"></span>
+    <button class="tool btn" onclick={() => (project.view = "results")}><span class="ico">▤</span>Results</button>
+    <span class="spacer"></span>
+    <label class="row backend">
+      Backend:
+      <select class="field" aria-label="Backend"><option>CoolProp – reference EoS</option></select>
     </label>
-    <label>
-      Temperature <span class="unit">K</span>
-      <input name="temperature" bind:value={temperature} inputmode="decimal" />
-    </label>
-    <label>
-      Pressure <span class="unit">MPa</span>
-      <input name="pressure" bind:value={pressure} inputmode="decimal" />
-    </label>
-    <button type="submit" disabled={busy}>{busy ? "Calculating…" : "Calculate"}</button>
-  </form>
+  </div>
 
-  <section aria-live="polite">
-    {#if result}
-      <p class="result">
-        <span class="label">Density ρ</span>
-        <output>{formatValue(result.value)}</output>
-        <span class="unit">kg/m³</span>
-      </p>
-      <p class="meta">{result.backend} {result.backend_version}</p>
-    {:else if error}
-      <p class="error" role="alert">{error}</p>
-    {/if}
-  </section>
-</main>
+  <div class="main">
+    <section class="pane left">
+      <header class="titlebar">Project</header>
+      <ProjectTree />
+    </section>
+
+    <section class="center">
+      <div class="tabs" role="tablist">
+        {#each TABS as t (t.id)}
+          <button class="tab" class:on={project.view === t.id} role="tab" aria-selected={project.view === t.id} onclick={() => (project.view = t.id)}>
+            {t.label}
+          </button>
+        {/each}
+      </div>
+      <div class="work">
+        {#if project.view === "data"}<DataView />
+        {:else if project.view === "fit"}<FitView />
+        {:else if project.view === "study"}<StudyView />
+        {:else if project.view === "results"}<ResultsView />
+        {:else}<CalculatorView />{/if}
+      </div>
+      <div class="output"><OutputPanel /></div>
+    </section>
+
+    <section class="pane right"><PropertiesPanel /></section>
+  </div>
+
+  <footer class="status row">
+    <span class="cell grow">{project.busy ? `${project.busy}…` : project.status}</span>
+    <span class="cell">Selection rule: {project.locked ? "locked" : "open"}</span>
+    <span class="cell">Seed {project.settings.seed}</span>
+    <span class="cell">{project.datasets.length} datasets · {project.candidates.length} models</span>
+    <span class="cell progress" class:running={!!project.busy} aria-hidden="true"></span>
+  </footer>
+</div>
+
+{#if project.importOpen}<ImportDialog />{/if}
 
 <style>
-  main {
-    max-width: 28rem;
-    margin: 2.5rem auto;
-    padding: 0 1rem;
-  }
-  h1 {
-    font-size: 1.35rem;
-    font-weight: 600;
-    margin: 0 0 1.25rem;
-  }
-  form {
+  .window {
     display: grid;
-    gap: 0.85rem;
-    padding: 1.25rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    grid-template-rows: auto 1fr auto;
+    height: 100%;
   }
-  label {
-    display: grid;
-    gap: 0.3rem;
-    font-weight: 500;
+  .toolbar {
+    gap: 2px;
+    padding: 3px 6px;
+    border-bottom: 1px solid var(--shadow);
+    box-shadow: 0 1px 0 var(--hilite);
   }
-  input {
-    font: inherit;
-    padding: 0.45rem 0.6rem;
-    color: var(--text);
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-  }
-  input:focus-visible,
-  button:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
-  }
-  button {
-    font: inherit;
-    font-weight: 600;
-    padding: 0.55rem;
-    color: var(--accent-text);
-    background: var(--accent);
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-  }
-  button:disabled {
-    opacity: 0.6;
-    cursor: progress;
-  }
-  .unit,
-  .meta,
-  .label {
-    color: var(--muted);
-    font-weight: 400;
-  }
-  .result {
+  .tool {
     display: flex;
-    align-items: baseline;
-    gap: 0.5rem;
-    margin: 1.25rem 0 0.25rem;
+    flex-direction: column;
+    align-items: center;
+    min-width: 54px;
+    padding: 2px 6px;
   }
-  output {
-    font-size: 1.6rem;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
+  .tool.primary:not(:disabled) {
+    background: #c9d8c6;
   }
-  .meta {
-    margin: 0;
-    font-size: 0.85rem;
+  .ico {
+    font-size: 13px;
+    line-height: 15px;
   }
-  .error {
-    color: var(--error);
-    margin-top: 1.25rem;
+  .sep {
+    width: 2px;
+    height: 36px;
+    margin: 0 4px;
+    border-left: 1px solid var(--shadow);
+    border-right: 1px solid var(--hilite);
+  }
+  .backend select {
+    width: 200px;
+  }
+  .main {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr) 290px;
+    gap: 4px;
+    min-height: 0;
+    padding: 4px;
+  }
+  .pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border: 1px solid;
+    border-color: var(--shadow) var(--hilite) var(--hilite) var(--shadow);
+  }
+  .titlebar {
+    padding: 2px 6px;
+    font-weight: 700;
+    color: #0a1a3a;
+    background: var(--panel-title);
+  }
+  .left :global(.tree) {
+    flex: 1;
+  }
+  .center {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) 150px;
+    gap: 4px;
+    min-height: 0;
+  }
+  .tabs {
+    display: flex;
+    gap: 2px;
+    padding-left: 4px;
+    border-bottom: 1px solid var(--hilite);
+  }
+  .tab {
+    position: relative;
+    top: 1px;
+    padding: 3px 12px;
+    background: var(--face);
+    border: 1px solid;
+    border-color: var(--hilite) var(--dark) transparent var(--hilite);
+  }
+  .tab.on {
+    top: 0;
+    padding-bottom: 5px;
+    font-weight: 700;
+  }
+  .work {
+    min-height: 0;
+    padding: 6px;
+    overflow: hidden;
+    border: 1px solid;
+    border-color: var(--hilite) var(--dark) var(--dark) var(--hilite);
+  }
+  .output {
+    min-height: 0;
+    border: 1px solid;
+    border-color: var(--shadow) var(--hilite) var(--hilite) var(--shadow);
+  }
+  .status {
+    gap: 2px;
+    padding: 2px 4px;
+  }
+  .cell {
+    padding: 1px 6px;
+    white-space: nowrap;
+    border: 1px solid;
+    border-color: var(--shadow) var(--hilite) var(--hilite) var(--shadow);
+  }
+  .grow {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .progress {
+    width: 104px;
+    height: 16px;
+    background: var(--field);
+  }
+  .progress.running {
+    background: repeating-linear-gradient(90deg, var(--navy) 0 8px, transparent 8px 10px);
+    background-size: 20px 100%;
+    animation: march 0.8s linear infinite;
+  }
+  @keyframes march {
+    to {
+      background-position: 20px 0;
+    }
   }
 </style>

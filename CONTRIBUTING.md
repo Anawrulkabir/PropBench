@@ -21,7 +21,7 @@ You need Rust (rustup; the toolchain is pinned in `rust-toolchain.toml`), Node.j
 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) (WebKitGTK 4.1 and friends).
 
 ```bash
-uv sync --project worker                      # worker/.venv with CoolProp and the dev tools
+uv sync --project worker                      # worker/.venv: CoolProp, FeOs component, dev tools
 cd app && npm ci && cd ..                     # UI dependencies
 uv run --project worker pre-commit install    # format and lint checks on every commit
 ```
@@ -34,6 +34,16 @@ cd app && npm run tauri dev                   # desktop app in development mode
 ```
 
 In development the engine uses `worker/.venv`. Set `PB_WORKER_PYTHON` to use another interpreter.
+
+FeOs (PC-SAFT) is an on-demand component (README §2b): it is installed for development and CI (`feos`
+dependency group) but not bundled in the installer. Its tests skip locally if it is missing; CI sets
+`PB_REQUIRE_FEOS=1` so they always run there.
+
+## CI platforms
+
+During M1 development CI lints, builds and tests in a single **macOS Apple Silicon** job, to keep runs
+fast. Windows, Linux and macOS Intel are commented out in `.github/workflows/ci.yml` and will be restored before
+the release builds; until then, code that behaves differently per OS is not tested on those platforms.
 
 ## Check before every commit
 

@@ -7,7 +7,7 @@ use pb_engine::{Engine, EngineConfig, EngineError, WorkerCommand, resolve_worker
 use serde_json::json;
 
 const READY: &str =
-    r#"{"jsonrpc":"2.0","method":"ready","params":{"protocol":1,"propbench":"t","python":"t","coolprop":"t"}}"#;
+    r#"{"jsonrpc":"2.0","method":"ready","params":{"protocol":2,"propbench":"t","python":"t","coolprop":"t"}}"#;
 
 /// An engine whose worker is the given Python script (after printing READY unless the script does it).
 fn engine(script: &str, tweak: impl FnOnce(&mut EngineConfig)) -> Engine {
@@ -88,7 +88,7 @@ async fn worker_that_dies_before_ready_reports_its_stderr() {
 
 #[tokio::test]
 async fn protocol_version_mismatch_is_rejected() {
-    let ready = READY.replace("\"protocol\":1", "\"protocol\":99");
+    let ready = READY.replace("\"protocol\":2", "\"protocol\":99");
     let engine = engine(&format!("print({ready:?}, flush=True)\ninput()"), |_| {});
     let err = engine.start().await.unwrap_err();
     assert!(

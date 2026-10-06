@@ -52,3 +52,34 @@ export function errorMessage(err: unknown): string {
 export function computeProperty(request: PropertyRequest): Promise<PropertyResult> {
   return invoke<PropertyResult>("property", { request });
 }
+
+/** The worker operations of protocol v2 (whitelisted by `pb_engine::Method`). */
+export type WorkerMethod =
+  | "fluids"
+  | "properties"
+  | "dataset.preview"
+  | "dataset.import"
+  | "dataset.check"
+  | "model.kinds"
+  | "model.default"
+  | "model.predict"
+  | "model.fit"
+  | "study.validate"
+  | "selection.lock"
+  | "selection.select";
+
+/** Run one worker operation through the `worker` Tauri command → pb-engine → Python worker. */
+export function worker<T>(method: WorkerMethod, params: object = {}): Promise<T> {
+  return invoke<T>("worker", { method, params });
+}
+
+/** Base64 of a file's bytes, to send a picked file to the worker without a filesystem path. */
+export async function fileToBase64(file: Blob): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
