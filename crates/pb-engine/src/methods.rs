@@ -79,10 +79,14 @@ pub enum Method {
     RefsFormat,
     #[serde(rename = "refs.doi")]
     RefsDoi,
+    #[serde(rename = "figure.render")]
+    FigureRender,
+    #[serde(rename = "figure.presets")]
+    FigurePresets,
 }
 
 impl Method {
-    pub const ALL: [Method; 33] = [
+    pub const ALL: [Method; 35] = [
         Method::Fluids,
         Method::Properties,
         Method::DatasetPreview,
@@ -116,6 +120,8 @@ impl Method {
         Method::RefsParse,
         Method::RefsFormat,
         Method::RefsDoi,
+        Method::FigureRender,
+        Method::FigurePresets,
     ];
 
     /// The JSON-RPC method name.
@@ -154,6 +160,8 @@ impl Method {
             Method::RefsParse => "refs.parse",
             Method::RefsFormat => "refs.format",
             Method::RefsDoi => "refs.doi",
+            Method::FigureRender => "figure.render",
+            Method::FigurePresets => "figure.presets",
         }
     }
 

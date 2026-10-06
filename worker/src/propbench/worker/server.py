@@ -61,6 +61,8 @@ METHODS: dict[str, Callable[..., dict[str, Any]]] = {
     "refs.parse": api.refs_parse,
     "refs.format": api.refs_format,
     "refs.doi": api.refs_doi,
+    "figure.render": api.figure_render,
+    "figure.presets": api.figure_presets,
 }
 
 PARSE_ERROR = -32700

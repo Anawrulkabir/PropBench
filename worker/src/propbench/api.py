@@ -660,6 +660,22 @@ def refs_doi(doi: str) -> dict[str, Any]:
     return {"reference": {**ref, "citation": refs.citation(ref)}}
 
 
+# --- publication figures (M3b) ---
+
+
+def figure_render(spec: Mapping[str, Any], format: str = "svg", dpi: int = 600) -> dict[str, Any]:
+    """A publication figure (matplotlib) from a figure spec: SVG/PDF/EPS, or PNG/TIFF up to 2500 dpi."""
+    from propbench import figures
+
+    return figures.render_base64(spec, format, int(dpi))
+
+
+def figure_presets() -> dict[str, Any]:
+    from propbench import figures
+
+    return {"presets": [{"id": k, **v} for k, v in figures.PRESETS.items()], "formats": list(figures.FORMATS)}
+
+
 # --- project environments (M1c) ---
 
 
@@ -738,6 +754,8 @@ __all__ = [
     "env_run",
     "env_status",
     "env_sync",
+    "figure_presets",
+    "figure_render",
     "fluids",
     "gum_linear",
     "gum_montecarlo",

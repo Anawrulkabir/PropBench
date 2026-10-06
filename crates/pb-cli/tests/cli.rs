@@ -379,3 +379,20 @@ fn env_run_executes_in_the_project_environment() {
         "the script ran inside the project environment: {stdout}"
     );
 }
+
+#[test]
+fn figure_renders_a_pdf() {
+    let dir = std::env::temp_dir().join(format!("pb-cli-figure-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let spec = dir.join("spec.json");
+    std::fs::write(
+        &spec,
+        r#"{"preset": "acs1", "x": {"label": "T / K"}, "y": {"label": "y"},
+            "layers": [{"type": "points", "name": "d", "x": [300, 310], "y": [1, 2]}]}"#,
+    )
+    .unwrap();
+    let out = dir.join("fig.pdf");
+    let res = propbench(&["figure", spec.to_str().unwrap(), "--out", out.to_str().unwrap()]);
+    assert!(res.status.success(), "{}", String::from_utf8_lossy(&res.stderr));
+    assert!(std::fs::read(&out).unwrap().starts_with(b"%PDF"));
+}

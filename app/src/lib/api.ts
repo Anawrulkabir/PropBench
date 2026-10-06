@@ -87,7 +87,9 @@ export type WorkerMethod =
   | "gum.montecarlo"
   | "refs.parse"
   | "refs.format"
-  | "refs.doi";
+  | "refs.doi"
+  | "figure.render"
+  | "figure.presets";
 
 /** Run one worker operation through the `worker` Tauri command → pb-engine → Python worker. */
 export function worker<T>(method: WorkerMethod, params: object = {}): Promise<T> {

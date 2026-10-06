@@ -135,6 +135,15 @@ enum Command {
         #[arg(long)]
         no_references: bool,
     },
+    /// Render a publication figure from a figure spec (JSON, see propbench.figures) to a file.
+    Figure {
+        spec: PathBuf,
+        /// Output file; the format follows its extension (svg, pdf, eps, png, tiff).
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long, default_value_t = 600)]
+        dpi: u32,
+    },
     /// Components: list (registry and installed), install by id or from an archive file, remove.
     Components {
         #[command(subcommand)]
@@ -334,6 +343,36 @@ fn base64(bytes: &[u8]) -> String {
     out
 }
 
+/// Decode standard base64 (with padding); `None` for invalid input.
+fn base64_decode(text: &str) -> Option<Vec<u8>> {
+    let value = |c: u8| -> Option<u32> {
+        match c {
+            b'A'..=b'Z' => Some(u32::from(c - b'A')),
+            b'a'..=b'z' => Some(u32::from(c - b'a') + 26),
+            b'0'..=b'9' => Some(u32::from(c - b'0') + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    };
+    let bytes: Vec<u8> = text.bytes().filter(|b| !b.is_ascii_whitespace()).collect();
+    if !bytes.len().is_multiple_of(4) {
+        return None;
+    }
+    let mut out = Vec::with_capacity(bytes.len() / 4 * 3);
+    for chunk in bytes.chunks(4) {
+        let pad = chunk.iter().rev().take_while(|&&b| b == b'=').count();
+        let mut n = 0u32;
+        for &b in &chunk[..4 - pad] {
+            n = (n << 6) | value(b)?;
+        }
+        n <<= 6 * pad as u32;
+        let decoded = [(n >> 16) as u8, (n >> 8) as u8, n as u8];
+        out.extend_from_slice(&decoded[..3 - pad]);
+    }
+    Some(out)
+}
+
 fn invalid(message: impl Into<String>) -> EngineError {
     EngineError::Rpc {
         code: EngineError::INVALID_PARAMS,
@@ -526,6 +565,23 @@ async fn execute(engine: &Engine, command: Command) -> Result<Value, EngineError
             (Method::ModelCompare, params)
         }
         Command::Project { action } => return project_action(action),
+        Command::Figure { spec, out, dpi } => {
+            let format = out
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(str::to_ascii_lowercase)
+                .ok_or_else(|| invalid("--out needs an extension (svg, pdf, eps, png, tiff)"))?;
+            let params = json!({ "spec": read_json(&spec)?, "format": format, "dpi": dpi });
+            let result = engine.invoke(Method::FigureRender, params).await?;
+            let content = result
+                .get("content_base64")
+                .and_then(Value::as_str)
+                .ok_or_else(|| EngineError::Protocol("figure.render returned no content".into()))?;
+            let bytes =
+                base64_decode(content).ok_or_else(|| EngineError::Protocol("figure content is not base64".into()))?;
+            std::fs::write(&out, &bytes)?;
+            return Ok(json!({ "written": path_string(&out)?, "bytes": bytes.len(), "format": format }));
+        }
         Command::Env { action } => match action {
             EnvAction::Status { project } => (Method::EnvStatus, json!({ "project": project })),
             EnvAction::Create { project } => (Method::EnvCreate, json!({ "project": project })),
@@ -589,5 +645,14 @@ mod tests {
             assert_eq!(base64(plain.as_bytes()), encoded);
         }
         assert_eq!(base64(&[0xff, 0xfe, 0x00]), "//4A");
+    }
+
+    #[test]
+    fn base64_decode_inverts_encode() {
+        for plain in [&b""[..], b"f", b"fo", b"foo", b"foobar", &[0xff, 0xfe, 0x00, 0x10]] {
+            assert_eq!(super::base64_decode(&base64(plain)).as_deref(), Some(plain));
+        }
+        assert_eq!(super::base64_decode("abc"), None);
+        assert_eq!(super::base64_decode("ab!="), None);
     }
 }
