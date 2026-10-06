@@ -12,10 +12,11 @@ from typing import Any
 
 import CoolProp.CoolProp as CP  # noqa: N817 - the name CoolProp itself documents
 
-from propbench.core import identify_fluid
+from propbench.core import Quantity, identify_fluid
 from propbench.models.base import Model, ModelError, Parameter
 from propbench.models.dilute import ChungViscosity, LennardJonesDiluteGas
 from propbench.models.ecs import ECSViscosity
+from propbench.models.reference import CoolPropTransport
 
 KINDS: dict[str, dict[str, str]] = {
     "ecs_viscosity": {
@@ -30,10 +31,15 @@ KINDS: dict[str, dict[str, str]] = {
         "label": "Chapman-Enskog dilute gas (viscosity)",
         "reference": "Neufeld, Janzen, Aziz, J. Chem. Phys. 57 (1972) 1100",
     },
+    "coolprop_transport": {
+        "label": "CoolProp reference correlation (comparison only)",
+        "reference": "the transport correlation stored in CoolProp for the fluid",
+    },
 }
 
 _CLASSES: dict[type, str] = {ECSViscosity: "ecs_viscosity", ChungViscosity: "chung_viscosity"}
 _CLASSES[LennardJonesDiluteGas] = "lj_dilute_viscosity"
+_CLASSES[CoolPropTransport] = "coolprop_transport"
 
 
 def _number(value: float) -> float | None:
@@ -80,7 +86,9 @@ def model_to_spec(model: Model) -> dict[str, Any]:
         "reference": model.reference(),
         "parameters": {n: _parameter_to_dict(p) for n, p in model.params().items()},
     }
-    if isinstance(model, ECSViscosity):
+    if isinstance(model, CoolPropTransport):
+        pass
+    elif isinstance(model, ECSViscosity):
         spec["reference_fluid"] = model.reference_fluid
         spec["psi_exponents"] = list(model.psi_exponents)
         spec["psi_rhomolar_reducing"] = model.psi_rhomolar_reducing
@@ -108,6 +116,8 @@ def model_from_spec(spec: Mapping[str, Any]) -> Model:
             model = ChungViscosity(fluid, float(spec["molar_mass"]), params)
         elif kind == "lj_dilute_viscosity":
             model = LennardJonesDiluteGas(fluid, float(spec["molar_mass"]), params)
+        elif kind == "coolprop_transport":
+            model = CoolPropTransport.create(fluid, spec.get("quantity", "viscosity"))
         else:
             raise ModelError(f"unknown model kind {kind!r} (known: {', '.join(KINDS)})")
     except KeyError as exc:
@@ -137,6 +147,8 @@ def default_model(kind: str, fluid: str, reference_fluid: str | None = None) -> 
         )
     if kind == "lj_dilute_viscosity":
         return LennardJonesDiluteGas.create(name, m, sigma, epsilon_k)
+    if kind == "coolprop_transport":
+        return CoolPropTransport.create(name, Quantity.VISCOSITY)
     raise ModelError(f"unknown model kind {kind!r} (known: {', '.join(KINDS)})")
 
 

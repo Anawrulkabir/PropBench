@@ -1,0 +1,6 @@
+{
+ "kind": "propbench.reference-models",
+ "version": 1,
+ "notes": "Published models with the check values printed in their sources. Add entries only from the original publication (coefficients and check values verbatim); tests/models/test_reference.py verifies every check value. The NISTIR 8209 CF3I viscosity model (check value 168.5169 uPa*s at 356.8 K, 8.724 mol/L) is pending its coefficients from the report.",
+ "models": []
+}
