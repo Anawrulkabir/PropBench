@@ -18,6 +18,12 @@
   import ResultsView from "./components/ResultsView.svelte";
   import StudyView from "./components/StudyView.svelte";
   import WorksheetView from "./components/WorksheetView.svelte";
+  import WizardDialog from "./components/WizardDialog.svelte";
+  import SettingsDialogs from "./components/SettingsDialogs.svelte";
+  import SurfaceView from "./components/SurfaceView.svelte";
+  import ExperimentView from "./components/ExperimentView.svelte";
+  import FutureViews from "./components/FutureViews.svelte";
+  import { applyScale, loadScale } from "./lib/scale";
   import type { MenuItem } from "./lib/menu";
   import { project, type View } from "./lib/project.svelte";
 
@@ -162,8 +168,10 @@
       ],
     },
     { label: "Window", items: [{ label: "Reset layout", action: resetLayout }, { label: "Close extra tabs", action: () => (project.tabs = project.tabs.filter((t) => FIXED.has(t))) }] },
-    { label: "Help", items: [{ label: "CF3I tutorial", disabled: true, note: "M5" }, { label: "About PropBench", action: () => (project.dialog = "about") }] },
+    { label: "Help", items: [{ label: "CF3I tutorial", action: () => project.loadExample().then(() => project.open("data")) }, { label: "About PropBench", action: () => (project.dialog = "about") }] },
   ]);
+
+  applyScale(loadScale());
 
   // --- resizable panes (per-viewer layout, kept in browser storage) ---
   const DEFAULT_LAYOUT = { left: 240, right: 290, output: 150 };
@@ -263,6 +271,9 @@
         {:else if project.view === "worksheet"}<WorksheetView />
         {:else if project.view === "calculator"}<CalculatorView />
         {:else if project.view === "graph"}<GraphStudioView />
+        {:else if project.view === "surface"}<SurfaceView />
+        {:else if project.view === "experiment"}<ExperimentView />
+        {:else if project.view === "code" || project.view === "setup" || project.view === "cad"}<FutureViews view={project.view} />
         {:else}
           <PlannedView title={LABELS[project.view]} milestone="see the roadmap" description="This screen is being built." />
         {/if}
@@ -287,6 +298,8 @@
 </div>
 
 {#if project.importOpen}<ImportDialog />{/if}
+{#if project.dialog === "wizard"}<WizardDialog />
+{:else if project.dialog && project.dialog !== "import"}<SettingsDialogs />{/if}
 
 <style>
   .window {

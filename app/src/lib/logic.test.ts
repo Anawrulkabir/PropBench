@@ -271,3 +271,29 @@ describe("graph helpers", () => {
     expect(s.ticks[s.ticks.length - 1]).toBeLessThanOrEqual(400);
   });
 });
+
+describe("turbo colour map", () => {
+  it("runs from dark blue through green to dark red and clamps", async () => {
+    const { turbo } = await import("./surface");
+    expect(turbo(0)).toBe("rgb(35, 23, 27)");
+    expect(turbo(-1)).toBe(turbo(0));
+    expect(turbo(2)).toBe(turbo(1));
+    const mid = turbo(0.5).match(/\d+/g)?.map(Number) ?? [];
+    expect(mid[1]).toBeGreaterThan(mid[0]);
+    expect(mid[1]).toBeGreaterThan(mid[2]);
+  });
+});
+
+describe("measuredStates", () => {
+  it("groups repeats by temperature and pressure", async () => {
+    const { measuredStates } = await import("./study");
+    const d = dataset("lab", [208.82, 208.67, 209.69, 203.71], null);
+    d.temperature = [332.96, 332.97, 332.85, 332.83];
+    d.pressure = [3.999e6, 3.999e6, 4.002e6, 3.0e6];
+    const states = measuredStates(d);
+    expect(states.map((s) => s.rows)).toEqual([[0, 1, 2], [3]]);
+    expect(states[0].mean).toBeCloseTo((208.82 + 208.67 + 209.69) / 3, 10);
+    expect(states[0].spread).toBeCloseTo(1.02, 10);
+    expect(states[0].temperature).toBeCloseTo(332.9267, 4);
+  });
+});

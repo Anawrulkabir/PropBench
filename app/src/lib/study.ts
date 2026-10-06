@@ -128,3 +128,36 @@ export function pointSeries(
   });
   return [...groups].map(([name, g]) => ({ name, ...g }));
 }
+
+export interface MeasuredState {
+  temperature: number; // mean, K
+  pressure: number | null; // mean, Pa
+  phase: string;
+  rows: number[]; // indices into the dataset arrays
+  mean: number; // mean value, SI
+  spread: number; // max - min, SI
+}
+
+/** Repeats of one state: points within ``tTol`` K and ``pRel`` relative pressure of a state's first point. */
+export function measuredStates(d: Dataset, tTol = 1.0, pRel = 0.02): MeasuredState[] {
+  const states: MeasuredState[] = [];
+  d.values.forEach((v, i) => {
+    const t = d.temperature[i];
+    const p = d.pressure?.[i] ?? null;
+    const s = states.find((x) => {
+      const t0 = d.temperature[x.rows[0]];
+      const p0 = d.pressure?.[x.rows[0]] ?? null;
+      return Math.abs(t - t0) <= tTol && (p === null || p0 === null || Math.abs(p - p0) <= pRel * p0);
+    });
+    if (s) s.rows.push(i);
+    else states.push({ temperature: t, pressure: p, phase: d.phase?.[i] ?? "", rows: [i], mean: v, spread: 0 });
+  });
+  for (const s of states) {
+    const vals = s.rows.map((i) => d.values[i]);
+    s.temperature = s.rows.reduce((a, i) => a + d.temperature[i], 0) / s.rows.length;
+    s.pressure = d.pressure ? s.rows.reduce((a, i) => a + (d.pressure?.[i] ?? 0), 0) / s.rows.length : null;
+    s.mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    s.spread = Math.max(...vals) - Math.min(...vals);
+  }
+  return states;
+}

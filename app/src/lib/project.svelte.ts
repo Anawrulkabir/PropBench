@@ -199,6 +199,33 @@ class Project {
     });
   }
 
+  /** Load the CF3I tutorial data (published values; saturation states of the 1999 data from the reference EoS). */
+  async loadExample() {
+    await this.run("Load CF3I example", async () => {
+      const { cf3iExample } = await import("./examples");
+      for (const { dataset, saturation } of cf3iExample()) {
+        if (this.datasets.some((d) => d.name === dataset.name)) continue;
+        const d = { ...dataset } as Dataset;
+        if (saturation) {
+          const sat = await worker<{ outputs: Record<string, (number | null)[]> }>("properties", {
+            fluid: d.fluid,
+            pair: "QT_INPUTS",
+            values1: d.temperature.map(() => 0),
+            values2: d.temperature,
+            outputs: ["P", "Dmolar"],
+          });
+          d.pressure = sat.outputs.P.map((v) => v ?? 0);
+          d.molar_density = sat.outputs.Dmolar.map((v) => v ?? 0);
+        }
+        this.datasets.push(d);
+        this.note(`Loaded ${d.name}: ${d.values.length} points (${d.provenance.citation ?? ""})`);
+      }
+      this.name = "CF3I viscosity";
+      this.selection = null;
+      await this.checkData();
+    });
+  }
+
   removeDataset(name: string) {
     this.datasets = this.datasets.filter((d) => d.name !== name);
     delete this.checks[name];
