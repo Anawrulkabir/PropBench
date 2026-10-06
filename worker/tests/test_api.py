@@ -217,3 +217,59 @@ def test_thermoml_from_file_content():
     assert api.dataset_preview(content_base64=data, filename="r.xml")["thermoml"]
     out = api.dataset_import(content_base64=data, filename="r134a_sample.xml")
     assert out["datasets"]
+
+
+def test_consistency_and_compare_methods(tmp_path):
+    lab = api.dataset_import(str(write_csv(tmp_path / "lab.csv")), MAPPING, "R236FA")["datasets"]
+    old = api.dataset_import(str(write_csv(tmp_path / "old.csv", 1.03)), MAPPING, "R236FA", name="old")["datasets"]
+    fitted = {"name": "ECS (fitted)", "model": model_to_spec(TRUTH)}
+    report = api.consistency_analyze(lab + old, models=[fitted])
+    json.dumps(report, allow_nan=False)
+    assert report["models"] == ["ECS (fitted)", "CoolProp viscosity correlation"]
+    offsets = {(o["dataset"], o["reference"]): o for o in report["offsets"]}
+    assert offsets[("old", "ECS (fitted)")]["offset"] == pytest.approx(3.0, abs=1e-6)
+    assert offsets[("old", "lab")]["offset"] == pytest.approx(3.0, abs=0.1)  # same states: model-free
+    assert report["plots"]
+    assert report["plots"][0]["trend"]["pressure"]
+    without = api.consistency_analyze(lab + old, include_references=False)
+    assert without["models"] == []
+
+    refs = api.model_references("R236FA")["references"]
+    assert refs[0]["model"]["kind"] == "coolprop_transport"
+    rows = api.model_compare(lab + old, models=[fitted])["rows"]
+    table = {(r["model"], r["dataset"]): r for r in rows}
+    assert table[("ECS (fitted)", "lab")]["deviations"]["aard"] < 1e-6
+    assert table[("ECS (fitted)", "old")]["deviations"]["bias"] == pytest.approx(3.0, abs=1e-6)
+    assert ("CoolProp viscosity correlation", "all") in table
+
+
+def test_consistency_plots_lead_with_the_better_sampled_reference(tmp_path):
+    lab = api.dataset_import(str(write_csv(tmp_path / "lab.csv")), MAPPING, "R236FA")["datasets"]
+    small = json.loads(json.dumps(lab[0]))
+    keep = [0, 1, 3, 4]  # two isotherms with two pressures each
+    for key in ("temperature", "values", "pressure", "expanded_uncertainty", "point_ids"):
+        small[key] = [small[key][i] for i in keep]
+    small["name"] = "small"
+    plots = api.consistency_analyze([small, *lab], include_references=False)["plots"]
+    assert plots[0]["reference"] == "lab"
+    assert [p["temperature"] for p in plots if p["reference"] == "lab"] == sorted(
+        p["temperature"] for p in plots if p["reference"] == "lab"
+    )
+
+
+def test_points_and_correlation_for_plots(imported):
+    start = model_to_spec(default_model("ecs_viscosity", "R236FA"))
+    options = {"fixed": {"psi_2": True}}
+    fit = api.model_fit(start, imported, options)
+    corr = fit["correlation"]
+    assert corr["names"] == ["psi_0", "psi_1"]
+    assert corr["matrix"][0][0] == pytest.approx(1.0)
+    assert -1.0 <= corr["matrix"][0][1] <= 1.0
+    study = api.study_validate(start, imported, methods=["loso"], options=options, physics=False)
+    pts = study["cross_validation"]["loso"]["points"]
+    assert len(pts["ard"]) == 2 * len(STATES)
+    assert set(pts["dataset"]) == {"a", "b"}
+    rows = api.model_compare(imported)["rows"]
+    per_dataset = [r for r in rows if r["dataset"] != "all"]
+    assert all(len(r["ard"]) == len(r["point_ids"]) == len(STATES) for r in per_dataset)
+    assert all(r["ard"] is None for r in rows if r["dataset"] == "all")

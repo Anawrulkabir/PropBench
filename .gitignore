@@ -17,3 +17,7 @@ __pycache__/
 Thumbs.db
 .idea/
 .vscode/
+/dist/
+# Playwright
+/app/test-results/
+/app/playwright-report/

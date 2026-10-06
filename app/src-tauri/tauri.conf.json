@@ -14,10 +14,10 @@
       {
         "label": "main",
         "title": "PropBench",
-        "width": 560,
-        "height": 600,
-        "minWidth": 420,
-        "minHeight": 480
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 680
       }
     ],
     "security": {

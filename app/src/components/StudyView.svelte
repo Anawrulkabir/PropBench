@@ -4,6 +4,7 @@
   import { freeParameters, physicsPassed } from "../lib/study";
 
   const METHODS = [
+    { id: "lostate", label: "Leave one state out" },
     { id: "loso", label: "Leave one source (dataset) out" },
     { id: "loto", label: "Leave one isotherm out" },
     { id: "kfold", label: "k-fold" },

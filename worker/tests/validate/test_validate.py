@@ -23,10 +23,12 @@ from propbench.validate import (
     information_criteria,
     kfold,
     loso,
+    lostate,
     loto,
     physics_checks,
     select,
     state_grid,
+    state_groups,
 )
 
 SOURCES = [((260.0, 280.0, 300.0), (1e5, 5e6)), ((320.0, 340.0), (2e6, 1e7)), ((300.0, 360.0, 380.0), (1e5, 3e6))]
@@ -87,6 +89,36 @@ def test_loto_groups_isotherms(data):
     for f in folds:
         assert len(np.unique(data.temperature[f.test])) == 1
         assert not np.isin(data.temperature[f.train], data.temperature[f.test]).any()
+
+
+def test_lostate_holds_out_repeats_of_one_state():
+    """Repeats scatter in T (0.5 K) and p (1 %): each triplet is one state; nearby nominal states stay apart."""
+    nominal = [(333.0, 1e6), (333.0, 2e6), (353.0, 1e6)]
+    t, p = [], []
+    for tn, pn in nominal:
+        t += [tn - 0.3, tn, tn + 0.2]
+        p += [pn * 0.99, pn, pn * 1.01]
+    rho = np.array([CP.PropsSI("Dmolar", "T", a, "P", b, "R236FA") for a, b in zip(t, p, strict=True)])
+    ds = Dataset("rep", "R236FA", Quantity.VISCOSITY, np.array(t), rho * 1e-9, pressure=np.array(p))
+    data = fit_data([ds])
+    groups = state_groups(data)
+    assert groups.tolist() == [0, 0, 0, 1, 1, 1, 2, 2, 2]
+    folds = lostate(data)
+    assert len(folds) == 3
+    assert [len(f.test) for f in folds] == [3, 3, 3]
+    assert folds[1].name == "rep 332.97 K, 2 MPa"
+    no_pressure = data.select(np.arange(len(data)))
+    object.__setattr__(no_pressure, "pressure", None)
+    # without pressures the split falls back to density, which cannot tell liquid states 1 MPa apart: why the
+    # pressure is used when the data report it
+    fallback = state_groups(no_pressure, p_tolerance=0.01)
+    assert fallback[0] == fallback[3]
+
+
+def test_lostate_needs_two_states(data):
+    one = data.select(np.flatnonzero(state_groups(data) == 0))
+    with pytest.raises(SplitError, match="two states"):
+        lostate(one)
 
 
 def test_kfold_partitions_and_is_seeded(data):

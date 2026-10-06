@@ -89,6 +89,7 @@ export function buildMapping(
   coverageFactor: number,
   sheet: string | null,
   firstDataRow: number | null = null,
+  saturation: "liquid" | "vapor" | null = null,
 ): ImportMapping {
   const columns: ColumnSpec[] = [];
   const seen = new Set<string>();
@@ -103,8 +104,10 @@ export function buildMapping(
   });
   if (!seen.has("temperature")) throw new Error("Map a temperature column.");
   if (!seen.has("value")) throw new Error("Map the column with the property values.");
-  if (!seen.has("pressure") && !seen.has("molar_density") && quantity !== "vapor_pressure") {
-    throw new Error("Map a pressure or molar-density column to define the state of each point.");
+  if (!seen.has("pressure") && !seen.has("molar_density") && quantity !== "vapor_pressure" && !saturation) {
+    throw new Error(
+      "Map a pressure or molar-density column, or choose a saturated state, to define the state of each point.",
+    );
   }
   const mapping: ImportMapping = {
     kind: "propbench.import-mapping",
@@ -116,5 +119,6 @@ export function buildMapping(
   };
   if (firstDataRow !== null) mapping.first_data_row = firstDataRow;
   if (sheet !== null) mapping.sheet = sheet;
+  if (saturation) mapping.saturation = saturation;
   return mapping;
 }

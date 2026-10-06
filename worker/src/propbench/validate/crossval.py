@@ -58,9 +58,10 @@ class CrossValidation:
         names = list(ok[0].values) if ok else []
         return {n: np.array([f.values[n] for f in ok]) for n in names}
 
-    def summary(self) -> dict[str, Any]:
+    def summary(self, dataset_names: Sequence[str] | None = None) -> dict[str, Any]:
+        """JSON-ready summary; with ``dataset_names`` it also lists every held-out point's deviation (for plots)."""
         params = self.parameters()
-        return {
+        out = {
             "method": self.method,
             "seed": self.seed,
             "pooled": self.pooled.as_dict(),
@@ -80,6 +81,15 @@ class CrossValidation:
                 for n, v in params.items()
             },
         }
+        if dataset_names is not None:
+            ok = [f for f in self.folds if f.success]
+            out["points"] = {
+                "fold": [f.name for f in ok for _ in f.test_ard],
+                "dataset": [dataset_names[j] for f in ok for j in f.test_dataset_index],
+                "point_id": [int(i) for f in ok for i in f.test_point_ids],
+                "ard": [float(a) for f in ok for a in f.test_ard],
+            }
+        return out
 
 
 def _run_fold(

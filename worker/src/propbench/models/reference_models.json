@@ -1,0 +1,195 @@
+{
+ "kind": "propbench.reference-models",
+ "version": 1,
+ "notes": "Published models with the check values printed in their sources. Add entries only from the original publication (coefficients and check values verbatim); tests/models/test_reference.py verifies every check value. Check-value tolerance 1e-5: the reference equations of state come from CoolProp, which agree with REFPROP to about 1e-6 here.",
+ "models": [
+  {
+   "id": "nistir8209-r13i1-viscosity",
+   "label": "NISTIR 8209 (REFPROP 10) viscosity",
+   "fluid": "R13I1",
+   "quantity": "viscosity",
+   "spec": {
+    "kind": "ecs_viscosity",
+    "name": "NISTIR 8209 viscosity (ECS)",
+    "fluid": "R13I1",
+    "quantity": "viscosity",
+    "reference": "M.L. Huber, Models for viscosity, thermal conductivity, and surface tension of selected pure fluids as implemented in REFPROP v10.0, NISTIR 8209 (2018), doi:10.6028/NIST.IR.8209",
+    "parameters": {
+     "psi_0": {
+      "value": 1.22725,
+      "lower": -10.0,
+      "upper": 10.0,
+      "fixed": false,
+      "unit": "1",
+      "description": "ψ coefficient of (ρ/ρ_red)^0"
+     },
+     "psi_1": {
+      "value": -0.0879263,
+      "lower": -10.0,
+      "upper": 10.0,
+      "fixed": false,
+      "unit": "1",
+      "description": "ψ coefficient of (ρ/ρ_red)^1"
+     },
+     "sigma": {
+      "value": 4.926e-10,
+      "lower": 1e-10,
+      "upper": 2e-09,
+      "fixed": true,
+      "unit": "m",
+      "description": "LJ diameter"
+     },
+     "epsilon_k": {
+      "value": 314.8,
+      "lower": 1.0,
+      "upper": 5000.0,
+      "fixed": true,
+      "unit": "K",
+      "description": "ε/k"
+     },
+     "k": {
+      "value": 0.95,
+      "lower": 0.5,
+      "upper": 2.0,
+      "fixed": true,
+      "unit": "1",
+      "description": "dilute-gas factor"
+     }
+    },
+    "reference_fluid": "R134a",
+    "psi_exponents": [
+     0.0,
+     1.0
+    ],
+    "psi_rhomolar_reducing": 4430.6
+   },
+   "citation": "M.L. Huber, Models for viscosity, thermal conductivity, and surface tension of selected pure fluids as implemented in REFPROP v10.0, NISTIR 8209 (2018), doi:10.6028/NIST.IR.8209",
+   "check_values": [
+    {
+     "temperature": 356.8,
+     "molar_density": 8724.0,
+     "value": 0.0001685169,
+     "rel_tol": 1e-05,
+     "source": "NISTIR 8209, Table 7: 168.5169 uPa s at 356.8 K, 8.724 mol/L"
+    }
+   ]
+  },
+  {
+   "id": "nistir8209-r13i1-conductivity",
+   "label": "NISTIR 8209 (REFPROP 10) thermal conductivity",
+   "fluid": "R13I1",
+   "quantity": "thermal_conductivity",
+   "spec": {
+    "kind": "ecs_conductivity",
+    "name": "NISTIR 8209 thermal conductivity (ECS)",
+    "fluid": "R13I1",
+    "quantity": "thermal_conductivity",
+    "reference": "M.L. Huber, Models for viscosity, thermal conductivity, and surface tension of selected pure fluids as implemented in REFPROP v10.0, NISTIR 8209 (2018), doi:10.6028/NIST.IR.8209",
+    "parameters": {
+     "f_int_0": {
+      "value": 0.00128541,
+      "lower": -1.0,
+      "upper": 1.0,
+      "fixed": true,
+      "unit": "1",
+      "description": "f_int · T^0"
+     },
+     "f_int_1": {
+      "value": 5.32854e-07,
+      "lower": -1.0,
+      "upper": 1.0,
+      "fixed": true,
+      "unit": "1",
+      "description": "f_int · T^1"
+     },
+     "chi_0": {
+      "value": 1.0,
+      "lower": -10.0,
+      "upper": 10.0,
+      "fixed": false,
+      "unit": "1",
+      "description": "χ coefficient of δ^0"
+     }
+    },
+    "viscosity": {
+     "kind": "ecs_viscosity",
+     "name": "NISTIR 8209 viscosity (ECS)",
+     "fluid": "R13I1",
+     "quantity": "viscosity",
+     "reference": "M.L. Huber, Models for viscosity, thermal conductivity, and surface tension of selected pure fluids as implemented in REFPROP v10.0, NISTIR 8209 (2018), doi:10.6028/NIST.IR.8209",
+     "parameters": {
+      "psi_0": {
+       "value": 1.22725,
+       "lower": -10.0,
+       "upper": 10.0,
+       "fixed": false,
+       "unit": "1",
+       "description": "ψ coefficient of (ρ/ρ_red)^0"
+      },
+      "psi_1": {
+       "value": -0.0879263,
+       "lower": -10.0,
+       "upper": 10.0,
+       "fixed": false,
+       "unit": "1",
+       "description": "ψ coefficient of (ρ/ρ_red)^1"
+      },
+      "sigma": {
+       "value": 4.926e-10,
+       "lower": 1e-10,
+       "upper": 2e-09,
+       "fixed": true,
+       "unit": "m",
+       "description": "LJ diameter"
+      },
+      "epsilon_k": {
+       "value": 314.8,
+       "lower": 1.0,
+       "upper": 5000.0,
+       "fixed": true,
+       "unit": "K",
+       "description": "ε/k"
+      },
+      "k": {
+       "value": 0.95,
+       "lower": 0.5,
+       "upper": 2.0,
+       "fixed": true,
+       "unit": "1",
+       "description": "dilute-gas factor"
+      }
+     },
+     "reference_fluid": "R134a",
+     "psi_exponents": [
+      0.0,
+      1.0
+     ],
+     "psi_rhomolar_reducing": 4430.6
+    },
+    "chi_exponents": [
+     0.0
+    ],
+    "chi_rhomolar_reducing": 4430.6,
+    "critical": {
+     "q_d": 1672240802.6755853,
+     "xi0": 2.1e-10,
+     "gamma0": 0.057,
+     "r0": 1.02,
+     "nu": 0.63,
+     "gamma": 1.239,
+     "t_ref_factor": 1.5
+    }
+   },
+   "citation": "M.L. Huber, Models for viscosity, thermal conductivity, and surface tension of selected pure fluids as implemented in REFPROP v10.0, NISTIR 8209 (2018), doi:10.6028/NIST.IR.8209",
+   "check_values": [
+    {
+     "temperature": 356.8,
+     "molar_density": 8724.0,
+     "value": 0.0408518,
+     "rel_tol": 1e-05,
+     "source": "NISTIR 8209, Table 7: 40.8518 mW/(m K) at 356.8 K, 8.724 mol/L"
+    }
+   ]
+  }
+ ]
+}

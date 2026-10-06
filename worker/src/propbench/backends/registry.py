@@ -47,14 +47,32 @@ class PhaseCheck:
 
 
 def assign_phases(dataset: Dataset, backend: Backend) -> PhaseCheck:
-    """Assign each (T, p) point the phase from ``backend`` and compare with the phase stated in the source."""
+    """Assign each (T, p) point the phase from ``backend`` and compare with the phase stated in the source.
+
+    On the saturation curve the EoS cannot tell liquid from vapour (two-phase or no answer): there the phase stated
+    in the source (e.g. saturated liquid) is kept and not counted as a disagreement.
+    """
     if dataset.pressure is None:
         raise DatasetError("phase assignment needs pressures")
     result = backend.phases(dataset.fluid, dataset.temperature, dataset.pressure)
+    ambiguous = (Phase.UNKNOWN, Phase.TWO_PHASE)
+    phases = list(result.phases)
+    on_saturation = {
+        i
+        for i, computed in enumerate(result.phases)
+        if computed is Phase.TWO_PHASE or "saturation" in result.errors.get(i, "").lower()
+    }
     mismatches = []
     if dataset.phase is not None:
-        for pid, stated, computed in zip(dataset.point_ids, dataset.phase, result.phases, strict=True):
-            if stated in _COMPATIBLE and computed is not Phase.UNKNOWN and computed not in _COMPATIBLE[stated]:
+        for i, (pid, stated, computed) in enumerate(zip(dataset.point_ids, dataset.phase, result.phases, strict=True)):
+            if i in on_saturation:
+                if stated not in ambiguous:
+                    phases[i] = stated
+            elif stated in _COMPATIBLE and computed is not Phase.UNKNOWN and computed not in _COMPATIBLE[stated]:
                 mismatches.append(int(pid))
-    errors = {int(dataset.point_ids[i]): message for i, message in result.errors.items()}
-    return PhaseCheck(dataset.with_phase(result.phases), dataset.phase, tuple(mismatches), errors)
+    errors = {
+        int(dataset.point_ids[i]): message
+        for i, message in result.errors.items()
+        if not (i in on_saturation and phases[i] not in ambiguous)
+    }
+    return PhaseCheck(dataset.with_phase(phases), dataset.phase, tuple(mismatches), errors)

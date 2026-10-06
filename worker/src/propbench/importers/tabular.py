@@ -210,15 +210,22 @@ def table_to_dataset(
         index = table.column_index(p_spec.column)
         phase = tuple(_phase(row[index], p_spec.column, n) for row, n in _rows(table))
 
+    t_si = to_si(temperature, t_spec.unit, Quantity.TEMPERATURE)
+    pressure = state(Role.PRESSURE, Quantity.PRESSURE)
+    molar_density = state(Role.MOLAR_DENSITY, Quantity.MOLAR_DENSITY)
+    if mapping.saturation is not None and pressure is None and molar_density is None:
+        pressure, molar_density = _saturation_states(identify_fluid(fluid), t_si, mapping.saturation)
+        phase = tuple([Phase.LIQUID if mapping.saturation == "liquid" else Phase.VAPOR] * len(t_si))
+
     try:
         return Dataset(
             name=name,
             fluid=identify_fluid(fluid),
             quantity=mapping.quantity,
-            temperature=to_si(temperature, t_spec.unit, Quantity.TEMPERATURE),
+            temperature=t_si,
             values=values,
-            pressure=state(Role.PRESSURE, Quantity.PRESSURE),
-            molar_density=state(Role.MOLAR_DENSITY, Quantity.MOLAR_DENSITY),
+            pressure=pressure,
+            molar_density=molar_density,
             expanded_uncertainty=uncertainty,
             coverage_factor=mapping.coverage_factor,
             phase=phase,
@@ -226,6 +233,18 @@ def table_to_dataset(
         )
     except ValueError as exc:
         raise ImportFileError(str(exc)) from exc
+
+
+def _saturation_states(fluid: str, temperature: np.ndarray, side: str) -> tuple[np.ndarray, np.ndarray]:
+    """Saturation pressure and density of the saturated liquid (Q = 0) or vapour (Q = 1) from the reference EoS."""
+    from propbench.backends import CoolPropBackend  # the importer otherwise needs no property backend
+
+    quality = np.zeros_like(temperature) if side == "liquid" else np.ones_like(temperature)
+    batch = CoolPropBackend().properties(fluid, "QT_INPUTS", quality, temperature, ["P", "Dmolar"])
+    if batch.failed.any():
+        bad = [float(temperature[i]) for i in np.flatnonzero(batch.failed)]
+        raise ImportFileError(f"no saturation state at T = {bad} K (above the critical temperature?)")
+    return batch["P"], batch["Dmolar"]
 
 
 def import_file(

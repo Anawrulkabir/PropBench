@@ -1,0 +1,15 @@
+[package]
+name = "pb-term"
+description = "PropBench embedded terminal: a pseudo-terminal running the user's shell inside the project environment"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+portable-pty.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

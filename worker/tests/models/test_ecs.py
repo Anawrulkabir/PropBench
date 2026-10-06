@@ -100,3 +100,13 @@ def test_model_metadata():
 def test_invalid_states():
     with pytest.raises(ModelError):
         cf3i_model().predict([-1.0], [1.0])
+
+
+def test_fluid_without_coolprop_transport_gets_a_generic_ecs_start():
+    from propbench.models.spec import default_model
+
+    with pytest.raises(ModelError, match="not an ECS model"):
+        ECSViscosity.from_coolprop("R13I1")  # CoolProp has no transport data for CF3I
+    model = default_model("ecs_viscosity", "R13I1")
+    assert model.reference_fluid == "R134a"
+    assert model.params()["psi_0"].value == 1.0

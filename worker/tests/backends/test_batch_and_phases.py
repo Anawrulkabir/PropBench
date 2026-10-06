@@ -100,3 +100,22 @@ def test_assign_phases_without_stated_phases(heos):
     check = assign_phases(dataset(None), heos)
     assert check.mismatches == ()
     assert check.dataset.phase[1] is Phase.VAPOR
+
+
+def test_saturated_points_keep_the_stated_phase(heos):
+    import CoolProp.CoolProp as CP  # noqa: N817
+
+    from propbench.core import Dataset, Quantity
+
+    t = [300.0, 333.15]
+    p = [CP.PropsSI("P", "T", x, "Q", 0, "R13I1") for x in t]
+    d = Dataset(
+        "sat", "R13I1", Quantity.VISCOSITY, t, [2.7e-4, 2.07e-4], pressure=p, phase=(Phase.LIQUID, Phase.LIQUID)
+    )
+    check = assign_phases(d, heos)
+    assert check.dataset.phase == (Phase.LIQUID, Phase.LIQUID)
+    assert check.mismatches == ()
+    assert check.errors == {}
+    unstated = assign_phases(Dataset("u", "R13I1", Quantity.VISCOSITY, t, [2.7e-4, 2.07e-4], pressure=p), heos)
+    assert set(unstated.dataset.phase) == {Phase.UNKNOWN}  # without a stated phase the ambiguity is reported
+    assert len(unstated.errors) == 2

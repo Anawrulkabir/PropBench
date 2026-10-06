@@ -11,8 +11,46 @@ use tauri::{Manager, RunEvent, Runtime};
 /// Everything the app registers, shared by `main` and the IPC tests.
 fn builder<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     builder
+        .plugin(tauri_plugin_dialog::init())
         .manage(commands::AppEngine::default())
-        .invoke_handler(tauri::generate_handler![commands::property, commands::worker])
+        .manage(commands::Terminals::default())
+        .manage(commands::RemoteEngine::default())
+        .invoke_handler(tauri::generate_handler![
+            commands::property,
+            commands::worker,
+            commands::cancel,
+            commands::project_save,
+            commands::project_open,
+            commands::project_autosave,
+            commands::project_recover,
+            commands::project_discard_autosave,
+            commands::terminal_open,
+            commands::terminal_write,
+            commands::terminal_resize,
+            commands::terminal_close,
+            commands::remote_connect,
+            commands::remote_disconnect,
+            commands::secret_set,
+            commands::secret_has,
+            commands::secret_delete,
+            commands::assistant_ask,
+            commands::github_signin_start,
+            commands::github_signin_poll,
+            commands::github_push,
+            commands::history_commit,
+            commands::history_list,
+            commands::plugin_list,
+            commands::plugin_install,
+            commands::plugin_install_component,
+            commands::plugin_approve,
+            commands::plugin_revoke,
+            commands::plugin_remove,
+            commands::plugin_trust,
+            commands::plugin_predict,
+            commands::plugin_check,
+            commands::plugin_python,
+            commands::plugin_run
+        ])
 }
 
 fn main() -> ExitCode {
@@ -89,6 +127,18 @@ mod tests {
         let err = invoke(json!({ "request": request })).unwrap_err();
         assert_eq!(err["kind"], "property");
         assert!(err["message"].as_str().unwrap().contains("NotAFluid"));
+    }
+
+    #[test]
+    fn credential_methods_cannot_be_called_from_the_ui() {
+        let err = invoke_cmd(
+            "worker",
+            json!({ "method": "assistant.ask", "params": { "provider": "openai", "model": "m", "messages": [] } }),
+        )
+        .unwrap_err();
+        assert_eq!(err["kind"], "invalid_input");
+        let err = invoke_cmd("secret_set", json!({ "name": "ssh.key", "value": "x" })).unwrap_err();
+        assert_eq!(err["kind"], "invalid_input", "only ai.* and github.* credentials");
     }
 
     #[test]

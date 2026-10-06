@@ -26,7 +26,47 @@
 <aside class="props-panel">
   <header class="titlebar">Properties</header>
   <div class="body">
-    {#if dataset}
+    {#if project.view === "worksheet" && dataset}
+      {@const masked = new Set(project.masks[dataset.name] ?? [])}
+      {@const vals = dataset.values.filter((_, i) => !masked.has(dataset.point_ids[i])).map((v) => v * display(dataset.quantity).factor)}
+      <fieldset class="group">
+        <legend>Worksheet: {dataset.name}</legend>
+        <table class="props">
+          <tbody>
+            <tr><td>Source</td><td>{dataset.provenance?.doi ?? dataset.provenance?.citation ?? "–"}</td></tr>
+            <tr><td>Uncertainty type</td><td>expanded, k = {dataset.coverage_factor}</td></tr>
+            <tr><td>State</td><td>{dataset.pressure ? "T, p" : "T, ρ"}{dataset.molar_density && dataset.pressure ? " (saturation)" : ""}</td></tr>
+          </tbody>
+        </table>
+      </fieldset>
+      <fieldset class="group">
+        <legend>Column statistics: {display(dataset.quantity).symbol}</legend>
+        <table class="props">
+          <tbody>
+            <tr><td>N (unmasked)</td><td>{vals.length}</td></tr>
+            <tr><td>Mean</td><td>{vals.length ? fmt(vals.reduce((a, b) => a + b, 0) / vals.length) : "–"} {display(dataset.quantity).unit}</td></tr>
+            <tr><td>Min / max</td><td>{vals.length ? `${fmt(Math.min(...vals))} / ${fmt(Math.max(...vals))}` : "–"}</td></tr>
+            <tr><td>Masked rows</td><td class:warn={masked.size > 0}>{masked.size}</td></tr>
+          </tbody>
+        </table>
+      </fieldset>
+      {#if dataset.provenance?.citation || dataset.provenance?.doi}
+        <fieldset class="group">
+          <legend>Reference</legend>
+          <p class="why">{dataset.provenance?.citation ?? ""}{dataset.provenance?.doi ? ` doi:${dataset.provenance.doi}` : ""}</p>
+          <div class="row actions">
+            <button
+              class="btn"
+              onclick={() =>
+                navigator.clipboard?.writeText(
+                  `@misc{${dataset.name},\n  title = {${dataset.provenance?.citation ?? dataset.name}},\n  doi = {${dataset.provenance?.doi ?? ""}}\n}`,
+                )}
+            >Copy BibTeX</button>
+            <button class="btn" onclick={() => navigator.clipboard?.writeText(dataset.provenance?.doi ?? "")} disabled={!dataset.provenance?.doi}>Copy DOI</button>
+          </div>
+        </fieldset>
+      {/if}
+    {:else if dataset}
       <fieldset class="group">
         <legend>Dataset: {dataset.name}</legend>
         <table class="props">
@@ -99,6 +139,48 @@
                   {physicsPassed(candidate.study) ? "all passed" : "violations"}
                 </td>
               </tr>
+            </tbody>
+          </table>
+        </fieldset>
+      {/if}
+    {:else if project.view === "consistency" && project.consistency}
+      {@const report = project.consistency}
+      <fieldset class="group">
+        <legend>Study</legend>
+        <table class="props">
+          <tbody>
+            <tr><td>Type</td><td>Data consistency</td></tr>
+            <tr><td>Datasets</td><td>{project.datasets.length}</td></tr>
+            {#each report.overlaps as o (o.a + o.b)}
+              <tr><td>Overlap {o.a} / {o.b}</td><td>{fmt(o.t_range[0])}–{fmt(o.t_range[1])} K</td></tr>
+            {/each}
+            <tr><td>Models compared</td><td>{report.models.join(", ") || "none"}</td></tr>
+          </tbody>
+        </table>
+      </fieldset>
+      <fieldset class="group">
+        <legend>Datasets (stated U)</legend>
+        <table class="props">
+          <tbody>
+            {#each project.datasets as d (d.name)}
+              <tr><td>{d.name}</td><td>{relU(d.values, d.expanded_uncertainty)}</td></tr>
+            {/each}
+          </tbody>
+        </table>
+      </fieldset>
+      {#if report.offsets.some((o) => !report.models.includes(o.reference))}
+        <fieldset class="group">
+          <legend>Offsets between datasets</legend>
+          <table class="props">
+            <tbody>
+              {#each report.offsets.filter((o) => !report.models.includes(o.reference)) as o (o.dataset + o.reference)}
+                <tr>
+                  <td>{o.dataset} vs {o.reference}</td>
+                  <td class:warn={o.significant}>
+                    {o.offset >= 0 ? "+" : ""}{o.offset.toFixed(1)} % ({o.ci95_total[0].toFixed(1)} to {o.ci95_total[1].toFixed(1)})
+                  </td>
+                </tr>
+              {/each}
             </tbody>
           </table>
         </fieldset>
