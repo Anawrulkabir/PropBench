@@ -27,20 +27,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Temporarily macOS Apple Silicon only, to keep CI fast while M1 is developed (decided 2026-10-05).
-        # Restore the other platforms before the release builds by moving them back into `include`:
-        #   - name: linux-x64
-        #     os: ubuntu-22.04 # oldest supported glibc, so the AppImage runs on more distributions
-        #   - name: windows-x64
-        #     os: windows-2025
-        #   - name: macos-x64
-        #     os: macos-15-intel
-        # scripts/ci/test-installers.sh and the Linux prerequisites step still support all of them.
-        # Lint runs in one job only (lint: true), so it needs no runner of its own.
+        # All supported platforms (README §4e). Lint runs in one job only (lint: true).
         include:
           - name: macos-arm64
             os: macos-15
             lint: true
+          - name: macos-x64
+            os: macos-15-intel
+          - name: linux-x64
+            os: ubuntu-22.04 # oldest supported glibc, so the AppImage runs on more distributions
+          - name: windows-x64
+            os: windows-2025
     runs-on: ${{ matrix.os }}
     defaults:
       run:
