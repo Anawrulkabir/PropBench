@@ -59,6 +59,8 @@ export interface Series {
   color?: string;
   shape?: Shape;
   open?: boolean;
+  /** Symmetric error bar half-widths (same units as y), e.g. expanded uncertainties. */
+  err?: (number | null)[];
 }
 
 export interface Line {

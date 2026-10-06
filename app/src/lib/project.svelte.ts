@@ -5,6 +5,8 @@ import { errorMessage, fileToBase64, worker } from "./api";
 import { type Candidate, commonTarget, selectionCandidates, uniqueName } from "./study";
 import type {
   CheckEntry,
+  CompareResponse,
+  ConsistencyResponse,
   Dataset,
   FitResponse,
   ImportMapping,
@@ -16,7 +18,7 @@ import type {
   StudyResponse,
 } from "./types";
 
-export type View = "data" | "fit" | "study" | "results" | "calculator";
+export type View = "data" | "consistency" | "fit" | "study" | "results" | "calculator";
 
 export interface LogLine {
   time: string;
@@ -72,6 +74,9 @@ class Project {
   view = $state<View>("data");
   selected = $state<Selected>(null);
   importOpen = $state(false);
+  consistency = $state<ConsistencyResponse | null>(null);
+  comparison = $state<CompareResponse | null>(null);
+  consistencySettings = $state({ tTol: 1.0, references: true });
 
   note(text: string, level: LogLine["level"] = "info") {
     this.log.push({ time: now(), text, level });
@@ -123,6 +128,8 @@ class Project {
       }
       for (const w of result.warnings) this.note(w, "warn");
       this.selection = null;
+      this.consistency = null;
+      this.comparison = null;
       await this.checkData();
       return result.datasets.length;
     });
@@ -310,7 +317,48 @@ class Project {
     }
   }
 
+  /** Fitted candidates as {name, model} for the consistency and comparison operations. */
+  fittedModels() {
+    return this.candidates.filter((c) => c.fit).map((c) => ({ name: c.label, model: c.fit?.model }));
+  }
+
+  async analyzeConsistency() {
+    if (this.datasets.length === 0) return;
+    const result = await this.run("Consistency", () =>
+      worker<ConsistencyResponse>("consistency.analyze", {
+        datasets: this.datasets,
+        models: this.fittedModels(),
+        include_references: this.consistencySettings.references,
+        t_tol: this.consistencySettings.tTol,
+      }),
+    );
+    if (!result) return;
+    this.consistency = result;
+    for (const o of result.overlaps) {
+      this.note(`Consistency: ${o.a} and ${o.b} overlap at ${o.t_range[0].toFixed(1)}–${o.t_range[1].toFixed(1)} K`);
+    }
+    for (const w of result.warnings) this.note(w, "warn");
+    this.note(`Consistency check finished: ${result.overlaps.length} overlaps, ${result.warnings.length} warnings`);
+  }
+
+  async compareModels() {
+    if (this.datasets.length === 0) return;
+    const result = await this.run("Comparison", () =>
+      worker<CompareResponse>("model.compare", {
+        datasets: this.datasets,
+        models: this.fittedModels(),
+        include_references: true,
+      }),
+    );
+    if (result) {
+      this.comparison = result;
+      this.note(`Compared ${result.models.length} models on ${this.datasets.length} datasets`);
+    }
+  }
+
   invalidateResults() {
+    this.consistency = null;
+    this.comparison = null;
     for (const c of this.candidates) {
       c.fit = null;
       c.study = null;

@@ -396,6 +396,8 @@ def _isotherm_plots(datasets: list[Dataset], comparisons: list[Any], t_tol: floa
                     "trend_range": list(trend.p_range),
                 }
             )
+    # the better-sampled reference first (its trend extrapolates least), then by temperature
+    plots.sort(key=lambda pl: (-len(by_name[pl["reference"]]), pl["reference"], pl["other"], pl["temperature"]))
     return plots
 
 

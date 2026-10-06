@@ -103,6 +103,48 @@
           </table>
         </fieldset>
       {/if}
+    {:else if project.view === "consistency" && project.consistency}
+      {@const report = project.consistency}
+      <fieldset class="group">
+        <legend>Study</legend>
+        <table class="props">
+          <tbody>
+            <tr><td>Type</td><td>Data consistency</td></tr>
+            <tr><td>Datasets</td><td>{project.datasets.length}</td></tr>
+            {#each report.overlaps as o (o.a + o.b)}
+              <tr><td>Overlap {o.a} / {o.b}</td><td>{fmt(o.t_range[0])}–{fmt(o.t_range[1])} K</td></tr>
+            {/each}
+            <tr><td>Models compared</td><td>{report.models.join(", ") || "none"}</td></tr>
+          </tbody>
+        </table>
+      </fieldset>
+      <fieldset class="group">
+        <legend>Datasets (stated U)</legend>
+        <table class="props">
+          <tbody>
+            {#each project.datasets as d (d.name)}
+              <tr><td>{d.name}</td><td>{relU(d.values, d.expanded_uncertainty)}</td></tr>
+            {/each}
+          </tbody>
+        </table>
+      </fieldset>
+      {#if report.offsets.some((o) => !report.models.includes(o.reference))}
+        <fieldset class="group">
+          <legend>Offsets between datasets</legend>
+          <table class="props">
+            <tbody>
+              {#each report.offsets.filter((o) => !report.models.includes(o.reference)) as o (o.dataset + o.reference)}
+                <tr>
+                  <td>{o.dataset} vs {o.reference}</td>
+                  <td class:warn={o.significant}>
+                    {o.offset >= 0 ? "+" : ""}{o.offset.toFixed(1)} % ({o.ci95_total[0].toFixed(1)} to {o.ci95_total[1].toFixed(1)})
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </fieldset>
+      {/if}
     {:else if chosen && project.selection}
       <fieldset class="group">
         <legend>Why this model</legend>

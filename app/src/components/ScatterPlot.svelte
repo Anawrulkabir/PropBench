@@ -22,6 +22,8 @@
   const xs = $derived([...series.flatMap((s) => s.x), ...lines.flatMap((l) => l.x)]);
   const ys = $derived([
     ...series.flatMap((s) => s.y),
+    ...series.flatMap((s) => (s.err ? s.y.map((y, i) => (y === null ? null : y + (s.err?.[i] ?? 0))) : [])),
+    ...series.flatMap((s) => (s.err ? s.y.map((y, i) => (y === null ? null : y - (s.err?.[i] ?? 0))) : [])),
     ...lines.flatMap((l) => l.y),
     ...(band ? band : []),
   ]);
@@ -101,6 +103,14 @@
   {#each styled as s, i (s.name + i)}
     {#each s.x as x, j (j)}
       {@const y = s.y[j]}
+      {#if y !== null && Number.isFinite(y) && s.err?.[j]}
+        {@const e = s.err[j] ?? 0}
+        <path
+          d="M{sx.map(x)},{sy.map(y - e)}V{sy.map(y + e)}M{sx.map(x) - 3},{sy.map(y - e)}h6M{sx.map(x) - 3},{sy.map(y + e)}h6"
+          stroke={s.color}
+          fill="none"
+        />
+      {/if}
       {#if y !== null && Number.isFinite(y)}
         <path d={marker(s.shape, sx.map(x), sy.map(y))} fill={s.open ? "none" : s.color} stroke={s.color} stroke-width="1.2">
           <title>{s.name}: {tickLabel(x)}, {tickLabel(y)}</title>

@@ -66,7 +66,10 @@ export type WorkerMethod =
   | "model.fit"
   | "study.validate"
   | "selection.lock"
-  | "selection.select";
+  | "selection.select"
+  | "consistency.analyze"
+  | "model.references"
+  | "model.compare";
 
 /** Run one worker operation through the `worker` Tauri command → pb-engine → Python worker. */
 export function worker<T>(method: WorkerMethod, params: object = {}): Promise<T> {

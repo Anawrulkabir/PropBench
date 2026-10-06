@@ -241,3 +241,17 @@ def test_consistency_and_compare_methods(tmp_path):
     assert table[("ECS (fitted)", "lab")]["deviations"]["aard"] < 1e-6
     assert table[("ECS (fitted)", "old")]["deviations"]["bias"] == pytest.approx(3.0, abs=1e-6)
     assert ("CoolProp viscosity correlation", "all") in table
+
+
+def test_consistency_plots_lead_with_the_better_sampled_reference(tmp_path):
+    lab = api.dataset_import(str(write_csv(tmp_path / "lab.csv")), MAPPING, "R236FA")["datasets"]
+    small = json.loads(json.dumps(lab[0]))
+    keep = [0, 1, 3, 4]  # two isotherms with two pressures each
+    for key in ("temperature", "values", "pressure", "expanded_uncertainty", "point_ids"):
+        small[key] = [small[key][i] for i in keep]
+    small["name"] = "small"
+    plots = api.consistency_analyze([small, *lab], include_references=False)["plots"]
+    assert plots[0]["reference"] == "lab"
+    assert [p["temperature"] for p in plots if p["reference"] == "lab"] == sorted(
+        p["temperature"] for p in plots if p["reference"] == "lab"
+    )

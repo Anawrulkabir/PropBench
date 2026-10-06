@@ -184,3 +184,73 @@ export interface ImportMapping {
   first_data_row?: number | null;
   sheet?: string | null;
 }
+
+export interface OffsetResult {
+  dataset: string;
+  reference: string;
+  n: number;
+  offset: number;
+  ci95: [number, number];
+  u_reference: number;
+  ci95_total: [number, number];
+  birge: number | null;
+  significant: boolean;
+  extrapolated: number;
+}
+
+export interface ComparisonPoint {
+  a: string;
+  b: string;
+  point_id: number;
+  temperature: number;
+  delta_t: number;
+  pressure: number;
+  value: number;
+  trend_value: number;
+  difference: number;
+  u_combined: number;
+  z: number | null;
+  consistent: boolean;
+  extrapolated: boolean;
+}
+
+export interface TrendCheckResult {
+  a: string;
+  b: string;
+  temperature: number;
+  slope_sign: number;
+  violations: [number, number][];
+  passed: boolean;
+}
+
+export interface IsothermPlot {
+  temperature: number;
+  phase: string;
+  reference: string;
+  other: string;
+  points: {
+    dataset: string;
+    pressure: number[];
+    value: number[];
+    expanded_uncertainty: number[] | null;
+    point_ids: number[];
+  }[];
+  trend: { pressure: number[]; value: number[] };
+  trend_range: [number, number];
+}
+
+export interface ConsistencyResponse {
+  overlaps: { a: string; b: string; t_range: [number, number]; a_points: number[]; b_points: number[] }[];
+  comparisons: ComparisonPoint[];
+  trend_checks: TrendCheckResult[];
+  offsets: OffsetResult[];
+  z_scores: { dataset: string; reference: string; n_outside: number; max_abs: number | null; z: (number | null)[] }[];
+  warnings: string[];
+  models: string[];
+  plots: IsothermPlot[];
+}
+
+export interface CompareResponse {
+  models: string[];
+  rows: { model: string; dataset: string; deviations: Deviations; not_evaluated: number }[];
+}

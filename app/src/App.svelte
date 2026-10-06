@@ -2,6 +2,7 @@
   // Main window (design/mockups/01_Main): toolbar, project tree, tabbed work area, properties, output, status bar.
   // The UI never computes: every action goes through the worker (lib/project.svelte.ts → Tauri → pb-engine).
   import CalculatorView from "./components/CalculatorView.svelte";
+  import ConsistencyView from "./components/ConsistencyView.svelte";
   import DataView from "./components/DataView.svelte";
   import FitView from "./components/FitView.svelte";
   import ImportDialog from "./components/ImportDialog.svelte";
@@ -14,6 +15,7 @@
 
   const TABS: { id: View; label: string }[] = [
     { id: "data", label: "Data check" },
+    { id: "consistency", label: "Data consistency" },
     { id: "fit", label: "Fit" },
     { id: "study", label: "Study setup" },
     { id: "results", label: "Results" },
@@ -37,6 +39,16 @@
     </button>
     <button class="tool btn" onclick={() => project.checkData()} disabled={!!project.busy || !hasData}>
       <span class="ico">✓</span>Check
+    </button>
+    <button
+      class="tool btn"
+      onclick={() => {
+        project.view = "consistency";
+        project.analyzeConsistency();
+      }}
+      disabled={!!project.busy || !hasData}
+    >
+      <span class="ico">≈</span>Consistency
     </button>
     <span class="sep"></span>
     <button class="tool btn" onclick={fitSelected} disabled={!!project.busy || !hasModels}>
@@ -77,6 +89,7 @@
       </div>
       <div class="work">
         {#if project.view === "data"}<DataView />
+        {:else if project.view === "consistency"}<ConsistencyView />
         {:else if project.view === "fit"}<FitView />
         {:else if project.view === "study"}<StudyView />
         {:else if project.view === "results"}<ResultsView />
