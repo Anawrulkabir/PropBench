@@ -249,10 +249,16 @@ def model_fit(
         "value": data.values,
         "ard": result.ard,
     }
+    k = len(result.values)
+    cov = result.covariance[:k, :k]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        sd = np.sqrt(np.diag(cov))
+        correlation = cov / np.outer(sd, sd)
     return jsonable(
         {
             "model": model_to_spec(result.model),
             "summary": result.summary(),
+            "correlation": {"names": list(result.values), "matrix": correlation},
             "criteria": information_criteria(len(data), n_free, weighted_sse),
             "n_parameters": n_free,
             "points": points,
@@ -295,7 +301,7 @@ def study_validate(
         else:
             folds = SPLITS[method](data)
         cv = cross_validate(m, data, folds, method=method, workers=workers, seed=seed, **fit_options)
-        out["cross_validation"][method] = cv.summary()
+        out["cross_validation"][method] = cv.summary(data.dataset_names)
     if physics:
         fitted = run_fit(m, data, seed=seed, **fit_options).model
         pressures = [d.pressure for d in ds if d.pressure is not None]

@@ -255,3 +255,21 @@ def test_consistency_plots_lead_with_the_better_sampled_reference(tmp_path):
     assert [p["temperature"] for p in plots if p["reference"] == "lab"] == sorted(
         p["temperature"] for p in plots if p["reference"] == "lab"
     )
+
+
+def test_points_and_correlation_for_plots(imported):
+    start = model_to_spec(default_model("ecs_viscosity", "R236FA"))
+    options = {"fixed": {"psi_2": True}}
+    fit = api.model_fit(start, imported, options)
+    corr = fit["correlation"]
+    assert corr["names"] == ["psi_0", "psi_1"]
+    assert corr["matrix"][0][0] == pytest.approx(1.0)
+    assert -1.0 <= corr["matrix"][0][1] <= 1.0
+    study = api.study_validate(start, imported, methods=["loso"], options=options, physics=False)
+    pts = study["cross_validation"]["loso"]["points"]
+    assert len(pts["ard"]) == 2 * len(STATES)
+    assert set(pts["dataset"]) == {"a", "b"}
+    rows = api.model_compare(imported)["rows"]
+    per_dataset = [r for r in rows if r["dataset"] != "all"]
+    assert all(len(r["ard"]) == len(r["point_ids"]) == len(STATES) for r in per_dataset)
+    assert all(r["ard"] is None for r in rows if r["dataset"] == "all")

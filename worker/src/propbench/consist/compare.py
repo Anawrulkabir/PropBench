@@ -20,6 +20,8 @@ class ComparisonRow:
     dataset: str  # "all" for the pooled row
     deviations: Deviations
     not_evaluated: int  # states where the model cannot be computed
+    point_ids: np.ndarray | None = None  # per-point deviations of a dataset row (None for the pooled row)
+    ard: np.ndarray | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -27,6 +29,8 @@ class ComparisonRow:
             "dataset": self.dataset,
             "deviations": self.deviations.as_dict(),
             "not_evaluated": self.not_evaluated,
+            "point_ids": None if self.point_ids is None else self.point_ids.tolist(),
+            "ard": None if self.ard is None else self.ard.tolist(),
         }
 
 
@@ -42,7 +46,13 @@ def compare_models(
             predicted = predict_each(model, data.temperature, data.molar_density)
             ok = np.isfinite(predicted) & (predicted > 0)
             missing += int((~ok).sum())
-            rows.append(ComparisonRow(name, d.name, deviations(data.values[ok], predicted[ok]), int((~ok).sum())))
+            ard = np.full(len(data), np.nan)
+            ard[ok] = 100.0 * (data.values[ok] - predicted[ok]) / predicted[ok]
+            rows.append(
+                ComparisonRow(
+                    name, d.name, deviations(data.values[ok], predicted[ok]), int((~ok).sum()), data.point_ids, ard
+                )
+            )
             pooled_y.append(data.values[ok])
             pooled_m.append(predicted[ok])
         if len(states) > 1:
