@@ -51,7 +51,17 @@ export type View =
   | "curvefit"
   | "uncertainty";
 
-export type Dialog = "import" | "wizard" | "settings" | "components" | "addons" | "about" | "references" | null;
+export type Dialog =
+  | "import"
+  | "wizard"
+  | "settings"
+  | "components"
+  | "addons"
+  | "about"
+  | "references"
+  | "report"
+  | "export"
+  | null;
 
 export interface LogLine {
   time: string;

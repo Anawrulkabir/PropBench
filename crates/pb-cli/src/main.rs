@@ -144,6 +144,22 @@ enum Command {
         #[arg(long, default_value_t = 600)]
         dpi: u32,
     },
+    /// Write a report (pdf, docx, md, or zip bundle by the extension of --out) from a report spec (JSON).
+    Report {
+        spec: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Export a fitted model to a CoolProp fluid file, verified inside CoolProp (at the datasets' states if given).
+    ExportCoolprop {
+        model: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long)]
+        data: Option<PathBuf>,
+    },
     /// Components: list (registry and installed), install by id or from an archive file, remove.
     Components {
         #[command(subcommand)]
@@ -341,6 +357,17 @@ fn base64(bytes: &[u8]) -> String {
         }
     }
     out
+}
+
+/// Write the `content_base64` of a worker result to `out`.
+fn write_content(result: &Value, out: &Path) -> Result<Value, EngineError> {
+    let content = result
+        .get("content_base64")
+        .and_then(Value::as_str)
+        .ok_or_else(|| EngineError::Protocol("the worker returned no content".into()))?;
+    let bytes = base64_decode(content).ok_or_else(|| EngineError::Protocol("content is not base64".into()))?;
+    std::fs::write(out, &bytes)?;
+    Ok(json!({ "written": path_string(out)?, "bytes": bytes.len(), "format": result.get("format") }))
 }
 
 /// Decode standard base64 (with padding); `None` for invalid input.
@@ -565,6 +592,37 @@ async fn execute(engine: &Engine, command: Command) -> Result<Value, EngineError
             (Method::ModelCompare, params)
         }
         Command::Project { action } => return project_action(action),
+        Command::Report { spec, out } => {
+            let format = out
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(str::to_ascii_lowercase)
+                .ok_or_else(|| invalid("--out needs an extension (pdf, docx, md, zip)"))?;
+            let result = engine
+                .invoke(
+                    Method::ReportRender,
+                    json!({ "spec": read_json(&spec)?, "format": format }),
+                )
+                .await?;
+            return write_content(&result, &out);
+        }
+        Command::ExportCoolprop { model, out, name, data } => {
+            let datasets = match data {
+                Some(path) => read_datasets(&path)?,
+                None => Value::Null,
+            };
+            let params = json!({ "model": read_model(&model)?, "name": name, "datasets": datasets });
+            let result = engine.invoke(Method::ModelExportCoolProp, params).await?;
+            let verification = result.get("verification").cloned().unwrap_or(Value::Null);
+            if verification.get("identical").and_then(Value::as_bool) != Some(true) {
+                return Err(invalid(format!(
+                    "CoolProp does not reproduce the model: {verification}"
+                )));
+            }
+            let text = result.get("json").and_then(Value::as_str).unwrap_or_default();
+            std::fs::write(&out, text)?;
+            return Ok(json!({ "written": path_string(&out)?, "verification": verification }));
+        }
         Command::Figure { spec, out, dpi } => {
             let format = out
                 .extension()

@@ -396,3 +396,33 @@ fn figure_renders_a_pdf() {
     assert!(res.status.success(), "{}", String::from_utf8_lossy(&res.stderr));
     assert!(std::fs::read(&out).unwrap().starts_with(b"%PDF"));
 }
+
+#[test]
+fn export_coolprop_writes_a_verified_fluid_file() {
+    let dir = std::env::temp_dir().join(format!("pb-cli-export-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let model = dir.join("model.json");
+    let out = propbench(&[
+        "model",
+        "--kind",
+        "ecs_viscosity",
+        "--fluid",
+        "R236FA",
+        "-o",
+        model.to_str().unwrap(),
+    ]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let fluid = dir.join("R236FA-cli.json");
+    let res = propbench(&[
+        "export-coolprop",
+        model.to_str().unwrap(),
+        "--out",
+        fluid.to_str().unwrap(),
+        "--name",
+        "R236FA-cli",
+    ]);
+    assert!(res.status.success(), "{}", String::from_utf8_lossy(&res.stderr));
+    let json: serde_json::Value = serde_json::from_slice(&res.stdout).unwrap();
+    assert_eq!(json["verification"]["identical"], true, "{json}");
+    assert!(std::fs::read_to_string(&fluid).unwrap().contains("\"ECS\""));
+}

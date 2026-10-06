@@ -28,6 +28,8 @@
   import UncertaintyView from "./components/UncertaintyView.svelte";
   import ReferencesDialog from "./components/ReferencesDialog.svelte";
   import TutorialPanel from "./components/TutorialPanel.svelte";
+  import ReportDialog from "./components/ReportDialog.svelte";
+  import ExportDialog from "./components/ExportDialog.svelte";
   import { applyScale, loadScale } from "./lib/scale";
   import type { MenuItem } from "./lib/menu";
   import { project, type View } from "./lib/project.svelte";
@@ -196,7 +198,13 @@
         { label: "Results", action: () => project.open("results") },
       ],
     },
-    { label: "Report", items: [{ label: "Generate report…", disabled: true, note: "M4" }, { label: "Export to CoolProp…", disabled: true, note: "M4" }] },
+    {
+      label: "Report",
+      items: [
+        { label: "Generate report…", action: () => (project.dialog = "report"), disabled: !hasData },
+        { label: "Export to CoolProp…", action: () => (project.dialog = "export") },
+      ],
+    },
     {
       label: "Tools",
       items: [
@@ -286,7 +294,7 @@
     <button class="tool btn primary" onclick={validate} disabled={busy || !hasModels}><Icon name="validate" />Validate</button>
     <button class="tool btn stop" onclick={() => project.stop()} disabled={!busy}><Icon name="stop" />Stop</button>
     <span class="sep"></span>
-    <button class="tool btn" disabled title="Report generator: M4"><Icon name="report" />Report</button>
+    <button class="tool btn" onclick={() => (project.dialog = "report")} disabled={!hasData}><Icon name="report" />Report</button>
     <button class="tool btn" onclick={exportResults} disabled={!hasData}><Icon name="export" />Export</button>
     <span class="spacer"></span>
     <label class="row backend">
@@ -355,6 +363,8 @@
 {#if project.tutorial}<TutorialPanel />{/if}
 {#if project.dialog === "wizard"}<WizardDialog />
 {:else if project.dialog === "references"}<ReferencesDialog />
+{:else if project.dialog === "report"}<ReportDialog />
+{:else if project.dialog === "export"}<ExportDialog />
 {:else if project.dialog && project.dialog !== "import"}<SettingsDialogs />{/if}
 
 <style>

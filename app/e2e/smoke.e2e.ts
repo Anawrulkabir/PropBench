@@ -69,3 +69,23 @@ test("every screen and dialog opens without errors", async ({ app }) => {
     if (await app.getByRole("dialog").count()) await app.getByRole("dialog").getByRole("button", { name: /Close|Cancel|OK/ }).last().click();
   }
 });
+
+test("a fitted ECS model exports to CoolProp with identical values and a report is generated", async ({ app }) => {
+  await menu(app, "Help", "CF3I tutorial (guided)");
+  const panel = app.getByRole("complementary", { name: "CF3I tutorial" });
+  for (const step of ["Load data", "Check consistency", "Add ECS (R134a)", "Fit"]) {
+    const button = panel.getByRole("button", { name: step });
+    if (await button.count()) {
+      await button.click();
+      await idle(app);
+    }
+  }
+  await menu(app, "Report", "Export to CoolProp…");
+  await app.getByRole("button", { name: "Export and verify" }).click();
+  await expect(app.getByText(/^Identical: largest relative difference/)).toBeVisible();
+  await app.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).last().click();
+  await menu(app, "Report", "Generate report…");
+  const download = app.waitForEvent("download");
+  await app.getByRole("button", { name: "Generate" }).click();
+  expect((await download).suggestedFilename()).toMatch(/-report\.pdf$/);
+});

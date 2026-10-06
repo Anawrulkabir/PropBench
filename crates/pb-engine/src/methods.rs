@@ -83,10 +83,14 @@ pub enum Method {
     FigureRender,
     #[serde(rename = "figure.presets")]
     FigurePresets,
+    #[serde(rename = "report.render")]
+    ReportRender,
+    #[serde(rename = "model.export_coolprop")]
+    ModelExportCoolProp,
 }
 
 impl Method {
-    pub const ALL: [Method; 35] = [
+    pub const ALL: [Method; 37] = [
         Method::Fluids,
         Method::Properties,
         Method::DatasetPreview,
@@ -122,6 +126,8 @@ impl Method {
         Method::RefsDoi,
         Method::FigureRender,
         Method::FigurePresets,
+        Method::ReportRender,
+        Method::ModelExportCoolProp,
     ];
 
     /// The JSON-RPC method name.
@@ -162,6 +168,8 @@ impl Method {
             Method::RefsDoi => "refs.doi",
             Method::FigureRender => "figure.render",
             Method::FigurePresets => "figure.presets",
+            Method::ReportRender => "report.render",
+            Method::ModelExportCoolProp => "model.export_coolprop",
         }
     }
 
@@ -177,7 +185,9 @@ impl Method {
             Method::ConsistencyAnalyze | Method::ModelCompare => default.max(Duration::from_secs(10 * 60)),
             Method::ComponentsInstall | Method::ComponentsInstallFile => default.max(Duration::from_secs(30 * 60)),
             Method::EnvCreate | Method::EnvInstall | Method::EnvSync => default.max(Duration::from_secs(30 * 60)),
-            Method::CurveFit | Method::GumMonteCarlo => default.max(Duration::from_secs(15 * 60)),
+            Method::CurveFit | Method::GumMonteCarlo | Method::ReportRender => {
+                default.max(Duration::from_secs(15 * 60))
+            }
             // the script's own time limit (at most a day) applies inside the worker
             Method::EnvRun => default.max(Duration::from_secs(24 * 60 * 60)),
             _ => default,

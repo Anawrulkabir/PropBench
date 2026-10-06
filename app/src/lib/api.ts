@@ -89,7 +89,9 @@ export type WorkerMethod =
   | "refs.format"
   | "refs.doi"
   | "figure.render"
-  | "figure.presets";
+  | "figure.presets"
+  | "report.render"
+  | "model.export_coolprop";
 
 /** Run one worker operation through the `worker` Tauri command → pb-engine → Python worker. */
 export function worker<T>(method: WorkerMethod, params: object = {}): Promise<T> {

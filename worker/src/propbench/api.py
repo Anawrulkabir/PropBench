@@ -676,6 +676,41 @@ def figure_presets() -> dict[str, Any]:
     return {"presets": [{"id": k, **v} for k, v in figures.PRESETS.items()], "formats": list(figures.FORMATS)}
 
 
+# --- reports and CoolProp export (M4) ---
+
+
+def report_render(
+    spec: Mapping[str, Any], format: str = "pdf", project: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
+    """The report as Markdown, Word, PDF, or a reproducibility bundle (zip)."""
+    from propbench import report
+
+    return report.render(spec, format, project)
+
+
+def model_export_coolprop(
+    model: Mapping[str, Any],
+    name: str | None = None,
+    datasets: Sequence[Mapping[str, Any]] | None = None,
+    backend: str = DEFAULT_BACKEND,
+) -> dict[str, Any]:
+    """CoolProp fluid file holding the model, verified inside CoolProp at the datasets' states (or a default grid)."""
+    from propbench import export
+
+    m = model_from_spec(model)
+    text = export.to_json(m, name)
+    if datasets:
+        data = fit_data(_datasets(datasets), get_backend(backend))
+        t, rho = data.temperature, data.molar_density
+    else:
+        import CoolProp.CoolProp as CP  # noqa: N817
+
+        tc = CP.PropsSI("Tcrit", m.fluid)
+        t = np.linspace(0.6 * tc, 1.2 * tc, 7)
+        rho = np.array([CP.PropsSI("Dmolar", "T", x, "P", 2e6, m.fluid) for x in t])
+    return {"json": text, "verification": jsonable(export.verify(m, text, t.tolist(), rho.tolist()))}
+
+
 # --- project environments (M1c) ---
 
 
@@ -762,6 +797,7 @@ __all__ = [
     "jsonable",
     "model_compare",
     "model_default",
+    "model_export_coolprop",
     "model_fit",
     "model_kinds",
     "model_predict",
@@ -770,6 +806,7 @@ __all__ = [
     "refs_doi",
     "refs_format",
     "refs_parse",
+    "report_render",
     "selection_lock",
     "selection_select",
     "study_validate",
