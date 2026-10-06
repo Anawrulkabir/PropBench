@@ -74,7 +74,12 @@ export type WorkerMethod =
   | "components.install"
   | "components.install_file"
   | "components.remove"
-  | "components.datasets";
+  | "components.datasets"
+  | "env.status"
+  | "env.create"
+  | "env.install"
+  | "env.sync"
+  | "env.run";
 
 /** Run one worker operation through the `worker` Tauri command → pb-engine → Python worker. */
 export function worker<T>(method: WorkerMethod, params: object = {}): Promise<T> {

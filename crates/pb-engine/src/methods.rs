@@ -53,10 +53,20 @@ pub enum Method {
     ComponentsRemove,
     #[serde(rename = "components.datasets")]
     ComponentsDatasets,
+    #[serde(rename = "env.status")]
+    EnvStatus,
+    #[serde(rename = "env.create")]
+    EnvCreate,
+    #[serde(rename = "env.install")]
+    EnvInstall,
+    #[serde(rename = "env.sync")]
+    EnvSync,
+    #[serde(rename = "env.run")]
+    EnvRun,
 }
 
 impl Method {
-    pub const ALL: [Method; 20] = [
+    pub const ALL: [Method; 25] = [
         Method::Fluids,
         Method::Properties,
         Method::DatasetPreview,
@@ -77,6 +87,11 @@ impl Method {
         Method::ComponentsInstallFile,
         Method::ComponentsRemove,
         Method::ComponentsDatasets,
+        Method::EnvStatus,
+        Method::EnvCreate,
+        Method::EnvInstall,
+        Method::EnvSync,
+        Method::EnvRun,
     ];
 
     /// The JSON-RPC method name.
@@ -102,6 +117,11 @@ impl Method {
             Method::ComponentsInstallFile => "components.install_file",
             Method::ComponentsRemove => "components.remove",
             Method::ComponentsDatasets => "components.datasets",
+            Method::EnvStatus => "env.status",
+            Method::EnvCreate => "env.create",
+            Method::EnvInstall => "env.install",
+            Method::EnvSync => "env.sync",
+            Method::EnvRun => "env.run",
         }
     }
 
@@ -116,6 +136,9 @@ impl Method {
             Method::StudyValidate => default.max(Duration::from_secs(4 * 60 * 60)),
             Method::ConsistencyAnalyze | Method::ModelCompare => default.max(Duration::from_secs(10 * 60)),
             Method::ComponentsInstall | Method::ComponentsInstallFile => default.max(Duration::from_secs(30 * 60)),
+            Method::EnvCreate | Method::EnvInstall | Method::EnvSync => default.max(Duration::from_secs(30 * 60)),
+            // the script's own time limit (at most a day) applies inside the worker
+            Method::EnvRun => default.max(Duration::from_secs(24 * 60 * 60)),
             _ => default,
         }
     }

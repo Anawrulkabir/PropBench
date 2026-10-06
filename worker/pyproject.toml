@@ -11,6 +11,7 @@ dependencies = [
     "openpyxl==3.1.5",
     "pint==0.26.1",
     "scipy==1.18.1",
+    "uv==0.8.17",
 ]
 
 [dependency-groups]

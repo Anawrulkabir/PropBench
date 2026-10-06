@@ -42,6 +42,8 @@ function state(): SavedState {
     consistency: null,
     comparison: null,
     consistencySettings: { tTol: 1, references: true },
+    scripts: { "fit.py": "print(1)\n" },
+    environment: { packages: [], lock: "" },
   };
 }
 

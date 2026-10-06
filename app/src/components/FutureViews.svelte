@@ -1,23 +1,13 @@
 <script lang="ts">
-  // Code and terminal (mockup 10), Setup builder (17) and CAD & simulation (18): laid out as designed; the runtimes
-  // behind them come in later milestones (M1c environments, M4b AI and remote, 0.3 setup builder and simulation).
-  import { project } from "../lib/project.svelte";
+  // Setup builder (17) and CAD & simulation (18): laid out as designed; the setup builder and simulation runtime
+  // come in 0.3.
 
   interface Props {
-    view: "code" | "setup" | "cad";
+    view: "setup" | "cad";
   }
   let { view }: Props = $props();
 
-  let script = $state(`import propbench as pb
 
-proj = pb.open("${project.name}.pbp")
-data = proj.datasets
-# ECS with R134a as reference, linear shape function, fitted dilute-gas factor
-model = pb.models.ECS(reference="R134a", shape="linear", dilute_gas_factor=True)
-
-study = pb.validate(model, data, scheme="loso", bootstrap=200, seed=2026)
-print(study.summary())
-`);
 
   const GALLERY: Record<string, string[]> = {
     Flow: ["Pump", "Syringe pump", "Valve", "Capillary", "Pipe"],
@@ -27,40 +17,7 @@ print(study.summary())
   };
 </script>
 
-{#if view === "code"}
-  <div class="code">
-    <div class="files well">
-      <div class="head">Files</div>
-      <div>🗀 {project.name}</div>
-      <div class="ind">🗀 scripts</div>
-      <div class="ind2 sel">fit_ecs.py</div>
-      <div class="ind">🗀 data</div>
-      {#each project.datasets as d (d.name)}<div class="ind2">{d.name}.parquet</div>{/each}
-      <div class="ind">🗀 environment</div>
-      <div class="ind2">pyproject.toml</div>
-      <div class="ind2">uv.lock</div>
-    </div>
-    <div class="editor-col">
-      <div class="row">
-        <button class="btn" disabled title="Scripts run in the project environment: M1c">▷ Run in project environment</button>
-        <button class="btn" disabled title="Remote engine over SSH: M4b">Run on: local ▾</button>
-        <span class="spacer"></span>
-        <span class="muted">Python 3.12 · env: {project.name.toLowerCase().replace(/\s+/g, "-")}</span>
-      </div>
-      <textarea class="field editor mono" bind:value={script} spellcheck="false" aria-label="Script editor"></textarea>
-      <div class="terminal mono">
-        <div>PropBench terminal · project environment (isolated)</div>
-        <div class="dim">The terminal and script runner open in the project environment in M1c; nothing runs outside it.</div>
-      </div>
-    </div>
-    <aside class="ai">
-      <div class="head">AI assistant</div>
-      <div class="notice">Planned for M4b. AI output never changes code or data without your confirmation, and keys stay in the OS keychain.</div>
-      <textarea class="field" disabled placeholder="Ask about this project…"></textarea>
-      <div class="row"><span class="spacer"></span><button class="btn" disabled>Send</button></div>
-    </aside>
-  </div>
-{:else if view === "setup"}
+{#if view === "setup"}
   <div class="builder">
     <aside class="gallery well">
       <input class="field" placeholder="Search components" disabled />
@@ -95,19 +52,10 @@ print(study.summary())
 {/if}
 
 <style>
-  .code {
-    display: grid;
-    grid-template-columns: 170px minmax(0, 1fr) 240px;
-    gap: 6px;
-    height: 100%;
-    min-height: 0;
-  }
-  .files,
   .gallery {
     padding: 4px;
     overflow: auto;
   }
-  .head,
   .group-title {
     margin: 4px 0;
     font-weight: 700;
@@ -115,44 +63,11 @@ print(study.summary())
   .ind {
     padding-left: 12px;
   }
-  .ind2 {
-    padding-left: 24px;
-  }
-  .sel {
-    color: #fff;
-    background: var(--navy);
-  }
-  .editor-col,
   .canvas-col {
     display: flex;
     flex-direction: column;
     gap: 4px;
     min-height: 0;
-  }
-  .editor {
-    flex: 1;
-    min-height: 0;
-    padding: 6px;
-    font-size: 12px;
-    line-height: 1.5;
-    resize: none;
-  }
-  .terminal {
-    height: 110px;
-    padding: 6px;
-    color: #cfe;
-    background: #111;
-  }
-  .dim {
-    color: #8a8;
-  }
-  .ai {
-    display: grid;
-    gap: 6px;
-    align-content: start;
-  }
-  .ai textarea {
-    height: 80px;
   }
   .builder {
     display: grid;

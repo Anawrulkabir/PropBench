@@ -23,6 +23,7 @@
   import SurfaceView from "./components/SurfaceView.svelte";
   import ExperimentView from "./components/ExperimentView.svelte";
   import FutureViews from "./components/FutureViews.svelte";
+  import CodeView from "./components/CodeView.svelte";
   import { applyScale, loadScale } from "./lib/scale";
   import type { MenuItem } from "./lib/menu";
   import { project, type View } from "./lib/project.svelte";
@@ -313,7 +314,8 @@
         {:else if project.view === "graph"}<GraphStudioView />
         {:else if project.view === "surface"}<SurfaceView />
         {:else if project.view === "experiment"}<ExperimentView />
-        {:else if project.view === "code" || project.view === "setup" || project.view === "cad"}<FutureViews view={project.view} />
+        {:else if project.view === "code"}<CodeView />
+        {:else if project.view === "setup" || project.view === "cad"}<FutureViews view={project.view} />
         {:else}
           <PlannedView title={LABELS[project.view]} milestone="see the roadmap" description="This screen is being built." />
         {/if}

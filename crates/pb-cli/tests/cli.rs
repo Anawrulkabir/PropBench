@@ -351,3 +351,31 @@ fn components_install_offline_list_and_remove() {
     let listing = run(&["components", "list", "--registry", missing_registry.to_str().unwrap()]);
     assert_eq!(listing["installed"], serde_json::json!([]));
 }
+
+#[test]
+fn env_run_executes_in_the_project_environment() {
+    let dir = std::env::temp_dir().join(format!("pb-cli-envs-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let script = dir.join("hello.py");
+    std::fs::write(&script, "import sys, propbench\nprint('prefix', sys.prefix)\n").unwrap();
+    let envs = dir.join("envs");
+    let out = propbench(&[
+        "--envs-dir",
+        envs.to_str().unwrap(),
+        "env",
+        "run",
+        "CF3I demo",
+        script.to_str().unwrap(),
+        "--timeout",
+        "120",
+    ]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["exit_code"], 0, "{json}");
+    let stdout = json["stdout"].as_str().unwrap();
+    assert!(
+        stdout.contains("cf3i-demo"),
+        "the script ran inside the project environment: {stdout}"
+    );
+}

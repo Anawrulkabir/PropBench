@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/pb-store", "crates/pb-engine", "crates/pb-cli", "app/src-tauri"]
+members = ["crates/pb-store", "crates/pb-term", "crates/pb-engine", "crates/pb-cli", "app/src-tauri"]
 
 [workspace.package]
 version = "0.0.1"
@@ -12,6 +12,8 @@ rust-version = "1.97"
 [workspace.dependencies]
 pb-engine = { path = "crates/pb-engine" }
 pb-store = { path = "crates/pb-store" }
+pb-term = { path = "crates/pb-term" }
+portable-pty = "0.9"
 rusqlite = { version = "0.40", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }

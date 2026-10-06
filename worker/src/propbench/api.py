@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict
@@ -518,6 +519,67 @@ def components_datasets() -> dict[str, Any]:
     return jsonable({"datasets": out})
 
 
+# --- project environments (M1c) ---
+
+
+def env_status(project: str) -> dict[str, Any]:
+    """Whether the project's environment exists, where, and its lock."""
+    from propbench import envs
+
+    env = envs.get(project)
+    return {
+        "name": env.name,
+        "path": str(env.path),
+        "exists": env.exists(),
+        "python": str(env.python),
+        "lock": envs.lock(env) if env.exists() else "",
+    }
+
+
+def env_create(project: str) -> dict[str, Any]:
+    from propbench import envs
+
+    envs.create(project)
+    return env_status(project)
+
+
+def env_install(project: str, packages: Sequence[str]) -> dict[str, Any]:
+    """Install packages into the project's environment (created when missing); returns the new lock."""
+    from propbench import envs
+
+    env = envs.create(project)
+    return {"lock": envs.install(env, list(packages))}
+
+
+def env_sync(project: str, lock: str) -> dict[str, Any]:
+    """Recreate the project's environment from a lock stored with the project."""
+    from propbench import envs
+
+    env = envs.create(project)
+    return {"lock": envs.sync(env, lock)}
+
+
+def env_run(
+    project: str,
+    code: str,
+    timeout: float = 600.0,
+    memory_mb: int = 4096,
+    datasets: Sequence[Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Run a script in the project's environment (separate process, time and memory limits). ``datasets`` (the
+    open project's) are given to the script: ``propbench.datasets()`` returns them."""
+    from propbench import envs
+    from propbench.script import ENV_DATASETS
+
+    env = envs.create(project)
+    files, extra = {}, {}
+    if datasets:
+        files["project_datasets.json"] = json.dumps({"datasets": list(datasets)})
+        extra[ENV_DATASETS] = "{dir}/project_datasets.json"  # "/" works on every OS
+    result = envs.run(env, code, timeout=float(timeout), memory_mb=int(memory_mb), files=files, extra_env=extra)
+    return result.as_dict()
+
+
 __all__ = [
     "components_datasets",
     "components_install",
@@ -528,6 +590,11 @@ __all__ = [
     "dataset_check",
     "dataset_import",
     "dataset_preview",
+    "env_create",
+    "env_install",
+    "env_run",
+    "env_status",
+    "env_sync",
     "fluids",
     "jsonable",
     "model_compare",

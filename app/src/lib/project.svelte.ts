@@ -68,6 +68,19 @@ export interface StudySettings {
   multistart: number;
 }
 
+export const DEFAULT_SCRIPT = `import propbench as pb
+
+# The open project's datasets (masked points removed) and a model from the same list as Models › New
+data = pb.datasets()
+model = pb.model("ecs_viscosity", data[0].fluid, reference_fluid="R134a")
+
+result = pb.fit(model, data)
+print("fitted:", {k: round(v, 5) for k, v in result.values.items()}, "AARD", round(result.deviations.aard, 3), "%")
+
+cv = pb.validate(model, data, scheme="lostate", seed=2026)
+print("leave one state out: AARD", round(cv["pooled"]["aard"], 3), "% over", len(cv["folds"]), "states")
+`;
+
 export type Selected = { type: "dataset"; name: string } | { type: "candidate"; id: string } | null;
 
 function now(): string {
@@ -154,6 +167,8 @@ class Project {
     this.tabs = this.tabs.filter((v) => v !== view);
     if (this.view === view) this.view = this.tabs[this.tabs.length - 1] ?? "data";
   }
+  scripts = $state<Record<string, string>>({ "analysis.py": DEFAULT_SCRIPT });
+  environment = $state<{ packages: string[]; lock: string }>({ packages: [], lock: "" });
   consistency = $state<ConsistencyResponse | null>(null);
   comparison = $state<CompareResponse | null>(null);
   consistencySettings = $state({ tTol: 1.0, references: true });
@@ -231,6 +246,8 @@ class Project {
       consistency: this.consistency,
       comparison: this.comparison,
       consistencySettings: this.consistencySettings,
+      scripts: this.scripts,
+      environment: this.environment,
     };
   }
 
@@ -248,6 +265,8 @@ class Project {
       consistency: null,
       comparison: null,
       consistencySettings: { tTol: 1.0, references: true },
+      scripts: { "analysis.py": DEFAULT_SCRIPT },
+      environment: { packages: [], lock: "" },
     };
   }
 
@@ -264,6 +283,8 @@ class Project {
     this.consistency = state.consistency;
     this.comparison = state.comparison;
     this.consistencySettings = state.consistencySettings as { tTol: number; references: boolean };
+    this.scripts = state.scripts ?? { "analysis.py": DEFAULT_SCRIPT };
+    this.environment = state.environment ?? { packages: [], lock: "" };
     this.selected = null;
     this.worksheet = null;
   }

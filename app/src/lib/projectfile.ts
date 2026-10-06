@@ -53,6 +53,10 @@ export interface SavedState {
   consistency: ConsistencyResponse | null;
   comparison: CompareResponse | null;
   consistencySettings: unknown;
+  /** Python scripts of the project (file name → text), run in the project environment. */
+  scripts: Record<string, string>;
+  /** Project environment: packages asked for and the lock of exactly installed versions. */
+  environment: { packages: string[]; lock: string };
 }
 
 /** Document keys in the file; documents not listed here (written by newer versions) are kept as they are. */
@@ -67,6 +71,8 @@ export const DOCUMENT_KEYS = [
   "consistency",
   "comparison",
   "consistencySettings",
+  "scripts",
+  "environment",
 ] as const;
 
 export function nowSeconds(): number {
@@ -114,6 +120,8 @@ export function fromContent(content: ProjectContent, defaults: SavedState): Save
     consistency: doc("consistency"),
     comparison: doc("comparison"),
     consistencySettings: doc("consistencySettings"),
+    scripts: doc("scripts"),
+    environment: doc("environment"),
   };
 }
 

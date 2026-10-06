@@ -22,6 +22,7 @@ const ENV_ALLOWLIST: &[&str] = &[
     "LC_ALL",
     // PropBench's own settings: components folder and component registry (README §2b).
     "PB_COMPONENTS_DIR",
+    "PB_ENVS_DIR",
     "PB_REGISTRY_URL",
 ];
 

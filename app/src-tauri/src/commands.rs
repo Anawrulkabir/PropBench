@@ -1,11 +1,14 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use pb_engine::store::{Project, ResultCache, StoreError, now_seconds};
 use pb_engine::{Engine, EngineConfig, EngineError, Method, PropertyRequest, PropertyResult, WorkerCommand};
+use pb_term::{Terminal, activated_env, activation_command, default_shell};
 use serde::Serialize;
 use serde_json::Value;
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 /// Entries kept in the result cache (least recently used ones are dropped when the app starts).
 const CACHE_ENTRIES: usize = 5000;
@@ -39,8 +42,18 @@ impl AppEngine {
         self.0
             .get_or_init(|| {
                 let bundled = app.path().resource_dir().ok().map(|dir| dir.join("python"));
+                let data = app.path().app_data_dir().ok();
                 pb_engine::resolve_worker_python(bundled.as_deref())
-                    .map(|python| Engine::new(EngineConfig::new(WorkerCommand::python_worker(python))))
+                    .map(|python| {
+                        let mut worker = WorkerCommand::python_worker(python);
+                        if let Some(dir) = data {
+                            // components and project environments live only here (CLAUDE.md isolation rule)
+                            worker = worker
+                                .with_env("PB_COMPONENTS_DIR", dir.join("components"))
+                                .with_env("PB_ENVS_DIR", dir.join("envs"));
+                        }
+                        Engine::new(EngineConfig::new(worker))
+                    })
                     .map_err(|err| err.to_string())
             })
             .as_ref()
@@ -235,4 +248,121 @@ mod tests {
         assert!(project_path("/tmp/a.pbp").is_ok());
         assert_eq!(project_path("/tmp/a.txt").unwrap_err().kind, "invalid_input");
     }
+}
+
+/// Open terminals by id (README §4: terminal inside the project environment).
+#[derive(Default)]
+pub struct Terminals {
+    open: Mutex<HashMap<u32, Arc<Terminal>>>,
+    next: AtomicU32,
+}
+
+impl Terminals {
+    fn get(&self, id: u32) -> Result<Arc<Terminal>, CommandError> {
+        self.open
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| CommandError {
+                kind: "invalid_input",
+                message: format!("no terminal {id}"),
+            })
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct TerminalOutput {
+    id: u32,
+    data: Vec<u8>,
+}
+
+fn terminal_error(err: pb_term::TermError) -> CommandError {
+    CommandError {
+        kind: "terminal",
+        message: err.to_string(),
+    }
+}
+
+/// Open the user's shell in the project's environment (created if needed). Output arrives as
+/// `terminal-output` events ({id, data}); `terminal-exit` ({id}) when the shell ends.
+#[tauri::command]
+pub async fn terminal_open<R: Runtime>(
+    app: AppHandle<R>,
+    engine: tauri::State<'_, AppEngine>,
+    terminals: tauri::State<'_, Terminals>,
+    project: String,
+    cols: u16,
+    rows: u16,
+) -> Result<u32, CommandError> {
+    let status = engine
+        .engine(&app)?
+        .invoke(Method::EnvCreate, serde_json::json!({ "project": project }))
+        .await?;
+    let field = |k: &str| status.get(k).and_then(Value::as_str).map(PathBuf::from);
+    let (Some(root), Some(python)) = (field("path"), field("python")) else {
+        return Err(CommandError {
+            kind: "protocol",
+            message: "env.create did not return the environment's paths".into(),
+        });
+    };
+    let bin = python.parent().map_or_else(|| root.clone(), Path::to_path_buf);
+    let shell = default_shell();
+    let (term, rx) = Terminal::spawn(
+        &shell,
+        &[],
+        &root,
+        &activated_env(&root, &bin),
+        cols.max(20),
+        rows.max(5),
+    )
+    .map_err(terminal_error)?;
+    term.write(activation_command(&shell, &root, &bin).as_bytes())
+        .map_err(terminal_error)?;
+    let id = terminals.next.fetch_add(1, Ordering::Relaxed) + 1;
+    terminals
+        .open
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(id, Arc::new(term));
+    std::thread::spawn(move || {
+        while let Ok(data) = rx.recv() {
+            if app.emit("terminal-output", TerminalOutput { id, data }).is_err() {
+                break;
+            }
+        }
+        let _ = app.emit("terminal-exit", serde_json::json!({ "id": id }));
+    });
+    Ok(id)
+}
+
+#[tauri::command]
+pub async fn terminal_write(terminals: tauri::State<'_, Terminals>, id: u32, data: String) -> Result<(), CommandError> {
+    terminals.get(id)?.write(data.as_bytes()).map_err(terminal_error)
+}
+
+#[tauri::command]
+pub async fn terminal_resize(
+    terminals: tauri::State<'_, Terminals>,
+    id: u32,
+    cols: u16,
+    rows: u16,
+) -> Result<(), CommandError> {
+    terminals
+        .get(id)?
+        .resize(cols.max(20), rows.max(5))
+        .map_err(terminal_error)
+}
+
+#[tauri::command]
+pub async fn terminal_close(terminals: tauri::State<'_, Terminals>, id: u32) -> Result<(), CommandError> {
+    if let Some(term) = terminals
+        .open
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .remove(&id)
+    {
+        term.kill();
+    }
+    Ok(())
 }

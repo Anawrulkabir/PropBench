@@ -20,6 +20,9 @@ struct Cli {
     /// Folder of installed components (default: $PB_COMPONENTS_DIR).
     #[arg(long, global = true)]
     components_dir: Option<PathBuf>,
+    /// Folder of project environments (default: $PB_ENVS_DIR).
+    #[arg(long, global = true)]
+    envs_dir: Option<PathBuf>,
     /// Write the JSON result to this file instead of standard output.
     #[arg(long, short, global = true)]
     output_file: Option<PathBuf>,
@@ -137,6 +140,11 @@ enum Command {
         #[command(subcommand)]
         action: ComponentsAction,
     },
+    /// Project environments: status, create, install packages, sync from a lock, run a script with limits.
+    Env {
+        #[command(subcommand)]
+        action: EnvAction,
+    },
     /// Project files (.pbp): create, inspect, add datasets, snapshot, export to and import from JSON.
     Project {
         #[command(subcommand)]
@@ -170,6 +178,34 @@ enum ComponentsAction {
     },
     Remove {
         id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum EnvAction {
+    Status {
+        project: String,
+    },
+    Create {
+        project: String,
+    },
+    Install {
+        project: String,
+        packages: Vec<String>,
+    },
+    /// Make the environment match a lock file (`name==version` lines).
+    Sync {
+        project: String,
+        lock: PathBuf,
+    },
+    /// Run a Python script in the environment (separate process, time and memory limits).
+    Run {
+        project: String,
+        script: PathBuf,
+        #[arg(long, default_value_t = 600.0)]
+        timeout: f64,
+        #[arg(long, default_value_t = 4096)]
+        memory_mb: u64,
     },
 }
 
@@ -381,6 +417,9 @@ async fn run(cli: Cli) -> Result<String, EngineError> {
             if let Some(dir) = cli.components_dir {
                 worker = worker.with_env("PB_COMPONENTS_DIR", dir);
             }
+            if let Some(dir) = cli.envs_dir {
+                worker = worker.with_env("PB_ENVS_DIR", dir);
+            }
             let engine = Engine::new(EngineConfig::new(worker));
             let result = execute(&engine, command).await;
             engine.shutdown().await;
@@ -487,6 +526,27 @@ async fn execute(engine: &Engine, command: Command) -> Result<Value, EngineError
             (Method::ModelCompare, params)
         }
         Command::Project { action } => return project_action(action),
+        Command::Env { action } => match action {
+            EnvAction::Status { project } => (Method::EnvStatus, json!({ "project": project })),
+            EnvAction::Create { project } => (Method::EnvCreate, json!({ "project": project })),
+            EnvAction::Install { project, packages } => {
+                (Method::EnvInstall, json!({ "project": project, "packages": packages }))
+            }
+            EnvAction::Sync { project, lock } => {
+                let lock = std::fs::read_to_string(&lock)?;
+                (Method::EnvSync, json!({ "project": project, "lock": lock }))
+            }
+            EnvAction::Run {
+                project,
+                script,
+                timeout,
+                memory_mb,
+            } => {
+                let code = std::fs::read_to_string(&script)?;
+                let params = json!({ "project": project, "code": code, "timeout": timeout, "memory_mb": memory_mb });
+                (Method::EnvRun, params)
+            }
+        },
         Command::Components { action } => match action {
             ComponentsAction::List { registry } => (Method::ComponentsList, json!({ "registry": registry })),
             ComponentsAction::Install { id, registry } => {

@@ -13,6 +13,7 @@ fn builder<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     builder
         .plugin(tauri_plugin_dialog::init())
         .manage(commands::AppEngine::default())
+        .manage(commands::Terminals::default())
         .invoke_handler(tauri::generate_handler![
             commands::property,
             commands::worker,
@@ -21,7 +22,11 @@ fn builder<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
             commands::project_open,
             commands::project_autosave,
             commands::project_recover,
-            commands::project_discard_autosave
+            commands::project_discard_autosave,
+            commands::terminal_open,
+            commands::terminal_write,
+            commands::terminal_resize,
+            commands::terminal_close
         ])
 }
 

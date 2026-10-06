@@ -48,6 +48,11 @@ METHODS: dict[str, Callable[..., dict[str, Any]]] = {
     "components.install_file": api.components_install_file,
     "components.remove": api.components_remove,
     "components.datasets": api.components_datasets,
+    "env.status": api.env_status,
+    "env.create": api.env_create,
+    "env.install": api.env_install,
+    "env.sync": api.env_sync,
+    "env.run": api.env_run,
 }
 
 PARSE_ERROR = -32700
@@ -171,7 +176,7 @@ def _api_method(function: Callable[..., dict[str, Any]]) -> Callable[[Any], dict
             return function(**params)
         except BackendError as exc:
             raise RpcError(BACKEND_ERROR, str(exc)) from exc
-        except (ValueError, FitError, OSError, KeyError) as exc:
+        except (ValueError, FitError, OSError, KeyError, RuntimeError) as exc:
             # every PropBench domain error is a ValueError (DatasetError, ModelError, MappingError, ...)
             raise RpcError(PROPBENCH_ERROR, str(exc)) from exc
 
