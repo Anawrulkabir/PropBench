@@ -7,6 +7,7 @@
   import DeviationView from "./components/DeviationView.svelte";
   import FittingView from "./components/FittingView.svelte";
   import FitView from "./components/FitView.svelte";
+  import GraphStudioView from "./components/GraphStudioView.svelte";
   import Icon from "./components/Icon.svelte";
   import ImportDialog from "./components/ImportDialog.svelte";
   import MenuBar from "./components/MenuBar.svelte";
@@ -261,6 +262,7 @@
         {:else if project.view === "results"}<ResultsView />
         {:else if project.view === "worksheet"}<WorksheetView />
         {:else if project.view === "calculator"}<CalculatorView />
+        {:else if project.view === "graph"}<GraphStudioView />
         {:else}
           <PlannedView title={LABELS[project.view]} milestone="see the roadmap" description="This screen is being built." />
         {/if}

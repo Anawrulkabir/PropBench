@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildMapping, guessColumn } from "./mapping";
-import { linearScale, niceTicks, tickLabel } from "./plot";
+import { breakAtPhaseChange, fixedScale, linearScale, niceTicks, tickLabel } from "./plot";
 import { display, fmt, pct, withError } from "./quantities";
 import {
   applyMask,
@@ -255,5 +255,19 @@ describe("pointSeries", () => {
       { name: "a", x: [302, 300], y: [0.1, 0.3] },
       { name: "b", x: [300], y: [-0.2] },
     ]);
+  });
+});
+
+describe("graph helpers", () => {
+  it("breaks an isobar at the liquid-vapour jump", () => {
+    expect(breakAtPhaseChange([200, 190, 180, 20, 21, null, 22])).toEqual([200, 190, 180, null, 21, null, 22]);
+  });
+
+  it("keeps a user-set axis range", () => {
+    const s = fixedScale([250, 400], [0, 100]);
+    expect(s.domain).toEqual([250, 400]);
+    expect(s.map(325)).toBe(50);
+    expect(s.ticks[0]).toBeGreaterThanOrEqual(250);
+    expect(s.ticks[s.ticks.length - 1]).toBeLessThanOrEqual(400);
   });
 });
