@@ -17,10 +17,13 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 pb-engine.workspace = true
 pb-term.workspace = true
+pb-secrets.workspace = true
+pb-git.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+tokio = { workspace = true, features = ["sync"] }
 
 [lints]
 workspace = true

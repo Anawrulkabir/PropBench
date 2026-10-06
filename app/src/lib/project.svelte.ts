@@ -4,6 +4,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { ask, open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { cancelWorker, errorMessage, fileToBase64, inTauri, worker } from "./api";
+import { loadGithub } from "./history";
+import { pyName } from "./recording";
 import {
   addSnapshot,
   type AuditEntry,
@@ -61,6 +63,7 @@ export type Dialog =
   | "references"
   | "report"
   | "export"
+  | "history"
   | null;
 
 export interface LogLine {
@@ -136,6 +139,18 @@ class Project {
   /** Dataset shown in the worksheet tab. */
   worksheet = $state<string | null>(null);
   stopRequested = $state(false);
+  /** GUI actions are written to the script "recorded.py" as `import propbench as pb` calls. */
+  recording = $state(false);
+
+  record(line: string) {
+    if (!this.recording) return;
+    const name = "recorded.py";
+    const head = "import propbench as pb\n\ndata = pb.datasets()\n";
+    this.scripts[name] = (this.scripts[name] ?? head) + line + "\n";
+  }
+
+  /** Remote host computations run on ("" = this computer). */
+  runOn = $state("");
   /** The guided CF3I tutorial panel is open. */
   tutorial = $state(false);
   /** Document tabs of the work area, in order (fixed ones first, then tabs opened from the menus). */
@@ -311,6 +326,11 @@ class Project {
     this.worksheet = null;
   }
 
+  /** The project file content as it would be saved now. */
+  content(): ProjectContent {
+    return toContent(this.savedState(), this.fileContent, this.pendingAudit);
+  }
+
   isDirty(): boolean {
     return fingerprint(this.savedState()) !== this.savedFingerprint;
   }
@@ -369,6 +389,11 @@ class Project {
     if (!saved) return false;
     this.loaded(saved, target);
     this.note(`Saved ${target}`);
+    if (loadGithub().commitOnSave) {
+      invoke<{ id: string } | null>("history_commit", { path: target, message: `Save ${this.name}`, project: saved })
+        .then((c) => c && this.note(`History: committed ${c.id.slice(0, 8)}`))
+        .catch((err) => this.note(`History commit failed: ${errorMessage(err)}`, "warn"));
+    }
     return true;
   }
 
@@ -569,6 +594,7 @@ class Project {
       const candidate: Candidate = { id: crypto.randomUUID(), label, start: model, fixed: {}, fit: null, study: null, error: null };
       this.candidates.push(candidate);
       this.selected = { type: "candidate", id: candidate.id };
+      this.record(`${pyName(label)} = pb.model(${JSON.stringify(kind)}, ${JSON.stringify(target.fluid)}${referenceFluid ? `, reference_fluid=${JSON.stringify(referenceFluid)}` : ""})`);
       this.note(`Added model ${label}`);
     });
   }
@@ -605,6 +631,7 @@ class Project {
     if (result) {
       target.fit = result;
       target.error = null;
+      this.record(`fit_${pyName(c.label)} = pb.fit(${pyName(c.label)}, data, weighted=${this.settings.weighted ? "True" : "False"}, multistart=${this.settings.multistart}, seed=${this.settings.seed})`);
       const s = result.summary;
       this.note(
         `Fit ${c.label}: AARD ${s.deviations.aard?.toFixed(3)} %, ${s.nfev} evaluations${s.success ? "" : ` (${s.message})`}`,
@@ -646,6 +673,7 @@ class Project {
     const target = this.candidate(id);
     if (!target || !result) return;
     target.study = result;
+    for (const m of s.methods) this.record(`cv_${pyName(c.label)}_${m} = pb.validate(${pyName(c.label)}, data, scheme=${JSON.stringify(m)}, seed=${s.seed})`);
     for (const [method, cv] of Object.entries(result.cross_validation)) {
       this.note(`${method.toUpperCase()} ${c.label}: ${cv.folds.length} folds, AARD ${cv.pooled.aard?.toFixed(3)} %`);
     }

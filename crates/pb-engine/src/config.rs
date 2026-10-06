@@ -69,6 +69,93 @@ impl WorkerCommand {
     }
 }
 
+/// A worker on another machine, reached with the system's OpenSSH client and the user's own keys (README §4d).
+/// Nothing listens on the network: the worker's JSON-RPC runs over the SSH session's stdin and stdout.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RemoteTarget {
+    pub host: String,
+    #[serde(default)]
+    pub user: Option<String>,
+    #[serde(default)]
+    pub port: Option<u16>,
+    /// Private key file; by default the SSH agent and the user's SSH configuration decide.
+    #[serde(default)]
+    pub identity: Option<PathBuf>,
+    /// Python of the PropBench installation on the remote machine (with the `propbench` package).
+    pub python: String,
+}
+
+impl RemoteTarget {
+    fn check(&self) -> Result<(), EngineError> {
+        let ok_name = |s: &str| {
+            !s.is_empty()
+                && !s.starts_with('-')
+                && s.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | ':' | '[' | ']'))
+        };
+        if !ok_name(&self.host) || self.user.as_deref().is_some_and(|u| !ok_name(u)) {
+            return Err(EngineError::Startup(format!(
+                "invalid remote host or user `{}`",
+                self.destination()
+            )));
+        }
+        if self.python.trim().is_empty() || self.python.contains(['\n', '\0']) {
+            return Err(EngineError::Startup("invalid remote Python path".into()));
+        }
+        Ok(())
+    }
+
+    /// `user@host` or `host`.
+    pub fn destination(&self) -> String {
+        match &self.user {
+            Some(u) => format!("{u}@{}", self.host),
+            None => self.host.clone(),
+        }
+    }
+
+    /// The command line run on the remote machine (POSIX shell quoting).
+    pub fn remote_command(&self) -> String {
+        let quoted = format!("'{}'", self.python.replace('\'', "'\\''"));
+        format!("{quoted} -I -B -X utf8 -m propbench.worker")
+    }
+}
+
+impl WorkerCommand {
+    /// The worker on `target`, started through `ssh` (the first element of `ssh` is the program, the rest are
+    /// leading arguments; normally just `["ssh"]`). Batch mode: never asks for a password interactively.
+    pub fn ssh(target: &RemoteTarget, ssh: &[OsString]) -> Result<Self, EngineError> {
+        target.check()?;
+        let (program, lead) = ssh
+            .split_first()
+            .ok_or_else(|| EngineError::Startup("no ssh program".into()))?;
+        let mut args: Vec<OsString> = lead.to_vec();
+        for a in ["-T", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=30"] {
+            args.push(a.into());
+        }
+        if let Some(port) = target.port {
+            args.push("-p".into());
+            args.push(port.to_string().into());
+        }
+        if let Some(identity) = &target.identity {
+            args.push("-i".into());
+            args.push(identity.clone().into_os_string());
+        }
+        args.push("--".into());
+        args.push(target.destination().into());
+        args.push(target.remote_command().into());
+        let env = ENV_ALLOWLIST
+            .iter()
+            .chain(["SSH_AUTH_SOCK", "PATH"].iter())
+            .filter_map(|key| std::env::var_os(key).map(|value| (OsString::from(*key), value)))
+            .collect();
+        Ok(Self {
+            program: PathBuf::from(program),
+            args,
+            env,
+        })
+    }
+}
+
 /// Engine settings.
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
@@ -146,6 +233,35 @@ pub fn resolve_worker_python(bundled_dir: Option<&Path>) -> Result<PathBuf, Engi
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ssh_command_has_no_injection_and_quotes_the_remote_python() -> Result<(), EngineError> {
+        let target = RemoteTarget {
+            host: "gpu01.lab.example".into(),
+            user: Some("me".into()),
+            port: Some(2222),
+            identity: None,
+            python: "/opt/prop bench/bin/python".into(),
+        };
+        let cmd = WorkerCommand::ssh(&target, &["ssh".into()])?;
+        let args: Vec<String> = cmd.args.iter().map(|a| a.to_string_lossy().into_owned()).collect();
+        assert_eq!(cmd.program, PathBuf::from("ssh"));
+        let dd = args.iter().position(|a| a == "--").unwrap_or(usize::MAX);
+        assert_eq!(args[dd + 1], "me@gpu01.lab.example");
+        assert_eq!(
+            args[dd + 2],
+            "'/opt/prop bench/bin/python' -I -B -X utf8 -m propbench.worker"
+        );
+        assert!(args.contains(&"BatchMode=yes".to_owned()));
+        for bad in ["-oProxyCommand=evil", "a b", ""] {
+            let t = RemoteTarget {
+                host: bad.into(),
+                ..target.clone()
+            };
+            assert!(WorkerCommand::ssh(&t, &["ssh".into()]).is_err(), "{bad}");
+        }
+        Ok(())
+    }
 
     #[test]
     fn worker_command_runs_isolated_module() {

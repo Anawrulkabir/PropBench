@@ -89,3 +89,22 @@ test("a fitted ECS model exports to CoolProp with identical values and a report 
   await app.getByRole("button", { name: "Generate" }).click();
   expect((await download).suggestedFilename()).toMatch(/-report\.pdf$/);
 });
+
+test("the code editor (Monaco) starts and recording writes GUI actions as a script", async ({ app }) => {
+  await menu(app, "Tools", "Code and terminal");
+  await expect(app.locator(".monaco-editor").first()).toBeVisible();
+  await app.getByLabel("Record GUI actions").check();
+  await menu(app, "Help", "CF3I tutorial (guided)");
+  const panel = app.getByRole("complementary", { name: "CF3I tutorial" });
+  for (const step of ["Load data", "Check consistency", "Add ECS (R134a)", "Fit"]) {
+    const button = panel.getByRole("button", { name: step });
+    if (await button.count()) {
+      await button.click();
+      await idle(app);
+    }
+  }
+  await menu(app, "Tools", "Code and terminal");
+  await app.getByRole("button", { name: "recorded.py" }).click();
+  await expect(app.locator(".monaco-editor").first()).toContainText("pb.model(");
+  await expect(app.locator(".monaco-editor").first()).toContainText("pb.fit(");
+});

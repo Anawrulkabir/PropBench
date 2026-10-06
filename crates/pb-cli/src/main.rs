@@ -160,6 +160,26 @@ enum Command {
         #[arg(long)]
         data: Option<PathBuf>,
     },
+    /// Project history (a Git mirror of a .pbp project; no Git installation needed).
+    History {
+        #[command(subcommand)]
+        action: HistoryAction,
+    },
+    /// Credentials in the OS keychain (`ai.<provider>`, `github.token`); `set` reads the value from stdin.
+    Secret {
+        #[command(subcommand)]
+        action: SecretAction,
+    },
+    /// Ask the AI assistant (key from the OS keychain); prints the reply and its proposals, applies nothing.
+    Assistant {
+        #[arg(long)]
+        provider: String,
+        #[arg(long)]
+        model: String,
+        #[arg(long)]
+        base_url: Option<String>,
+        question: String,
+    },
     /// Components: list (registry and installed), install by id or from an archive file, remove.
     Components {
         #[command(subcommand)]
@@ -181,6 +201,25 @@ enum Command {
         #[arg(default_value = "{}")]
         params: String,
     },
+}
+
+#[derive(Subcommand)]
+enum HistoryAction {
+    /// Commit the project's mirror into `<project>.history` next to the file.
+    Commit {
+        file: PathBuf,
+        #[arg(long, short)]
+        message: String,
+    },
+    /// Commits, newest first.
+    Log { file: PathBuf },
+}
+
+#[derive(Subcommand)]
+enum SecretAction {
+    Set { name: String },
+    Has { name: String },
+    Delete { name: String },
 }
 
 #[derive(Subcommand)]
@@ -260,6 +299,56 @@ enum ProjectAction {
     Export { file: PathBuf },
     /// Write a project file from JSON produced by `export` (atomic).
     Import { json: PathBuf, file: PathBuf },
+}
+
+fn history_dir(file: &Path) -> PathBuf {
+    let stem = file
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "project".into());
+    file.with_file_name(format!("{stem}.history"))
+}
+
+fn local_action(command: &Command) -> Option<Result<Value, EngineError>> {
+    let git = |e: pb_git::GitError| invalid(e.to_string());
+    let secret = |e: pb_secrets::SecretError| invalid(e.to_string());
+    match command {
+        Command::History {
+            action: HistoryAction::Commit { file, message },
+        } => Some((|| {
+            let project = pb_engine::store::Project::load(file).map_err(store_error)?;
+            let done = pb_git::commit(
+                &history_dir(file),
+                &project,
+                message,
+                "PropBench user",
+                "propbench@localhost",
+            )
+            .map_err(git)?;
+            Ok(serde_json::to_value(done).unwrap_or(Value::Null))
+        })()),
+        Command::History {
+            action: HistoryAction::Log { file },
+        } => Some(
+            pb_git::history(&history_dir(file), 200)
+                .map_err(git)
+                .map(|h| serde_json::to_value(h).unwrap_or(Value::Null)),
+        ),
+        Command::Secret { action } => Some((|| match action {
+            SecretAction::Set { name } => {
+                let mut value = String::new();
+                std::io::stdin().read_line(&mut value)?;
+                pb_secrets::set(name, value.trim()).map_err(secret)?;
+                Ok(json!({ "stored": name }))
+            }
+            SecretAction::Has { name } => Ok(json!({ "name": name, "stored": pb_secrets::has(name).map_err(secret)? })),
+            SecretAction::Delete { name } => {
+                pb_secrets::delete(name).map_err(secret)?;
+                Ok(json!({ "deleted": name }))
+            }
+        })()),
+        _ => None,
+    }
 }
 
 fn store_error(err: pb_engine::store::StoreError) -> EngineError {
@@ -472,8 +561,11 @@ async fn main() -> ExitCode {
 
 async fn run(cli: Cli) -> Result<String, EngineError> {
     let result = match cli.command {
-        // Project files need no worker.
+        // Project files, history and credentials need no worker.
         Command::Project { action } => project_action(action),
+        command @ (Command::History { .. } | Command::Secret { .. }) => {
+            local_action(&command).unwrap_or(Ok(Value::Null))
+        }
         command => {
             let python = match cli.python {
                 Some(path) => path,
@@ -592,6 +684,22 @@ async fn execute(engine: &Engine, command: Command) -> Result<Value, EngineError
             (Method::ModelCompare, params)
         }
         Command::Project { action } => return project_action(action),
+        Command::History { .. } | Command::Secret { .. } => {
+            return local_action(&command).unwrap_or(Ok(Value::Null));
+        }
+        Command::Assistant {
+            provider,
+            model,
+            base_url,
+            question,
+        } => {
+            let key = pb_secrets::get(&format!("ai.{provider}")).map_err(|e| invalid(e.to_string()))?;
+            let params = json!({
+                "provider": provider, "model": model, "base_url": base_url, "api_key": key,
+                "messages": [{"role": "user", "content": question}],
+            });
+            (Method::AssistantAsk, params)
+        }
         Command::Report { spec, out } => {
             let format = out
                 .extension()

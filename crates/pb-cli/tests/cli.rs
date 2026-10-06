@@ -426,3 +426,25 @@ fn export_coolprop_writes_a_verified_fluid_file() {
     assert_eq!(json["verification"]["identical"], true, "{json}");
     assert!(std::fs::read_to_string(&fluid).unwrap().contains("\"ECS\""));
 }
+
+#[test]
+fn history_commit_and_log() {
+    let dir = std::env::temp_dir().join(format!("pb-cli-history-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("p.pbp");
+    let f = file.to_str().unwrap();
+    assert!(propbench(&["project", "new", f, "--name", "History"]).status.success());
+    let out = propbench(&["history", "commit", f, "-m", "first"]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let again = propbench(&["history", "commit", f, "-m", "unchanged"]);
+    assert_eq!(
+        String::from_utf8_lossy(&again.stdout).trim(),
+        "null",
+        "no commit when nothing changed"
+    );
+    let log: serde_json::Value = serde_json::from_slice(&propbench(&["history", "log", f]).stdout).unwrap();
+    assert_eq!(log.as_array().unwrap().len(), 1);
+    assert_eq!(log[0]["message"], "first");
+    assert!(dir.join("p.history").join("project.json").is_file());
+}

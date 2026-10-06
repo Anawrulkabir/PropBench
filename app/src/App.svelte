@@ -30,6 +30,7 @@
   import TutorialPanel from "./components/TutorialPanel.svelte";
   import ReportDialog from "./components/ReportDialog.svelte";
   import ExportDialog from "./components/ExportDialog.svelte";
+  import HistoryDialog from "./components/HistoryDialog.svelte";
   import { applyScale, loadScale } from "./lib/scale";
   import type { MenuItem } from "./lib/menu";
   import { project, type View } from "./lib/project.svelte";
@@ -139,6 +140,7 @@
         { label: "Save project as…", action: () => project.saveProject(true), disabled: busy, note: "Ctrl+Shift+S" },
         { separator: true, label: "" },
         { label: "Create snapshot…", action: snapshotPrompt, disabled: busy },
+        { label: "Project history (Git)…", action: () => (project.dialog = "history") },
         ...project.snapshots
           .slice(-8)
           .reverse()
@@ -352,6 +354,7 @@
     <span class="cell grow">{project.busy ? `${project.busy}…` : project.status}</span>
     <span class="cell">Selection rule: {project.locked ? "locked" : "open"}</span>
     <span class="cell">Seed {project.settings.seed}</span>
+    <span class="cell" title="Where fits and validation run">{project.runOn ? `Remote: ${project.runOn}` : "Local engine"}</span>
     {#if loso}<span class="cell">{loso}</span>{/if}
     <span class="cell">{project.datasets.length} datasets · {project.candidates.length} models</span>
     <span class="cell">PropBench 0.1.0</span>
@@ -365,6 +368,7 @@
 {:else if project.dialog === "references"}<ReferencesDialog />
 {:else if project.dialog === "report"}<ReportDialog />
 {:else if project.dialog === "export"}<ExportDialog />
+{:else if project.dialog === "history"}<HistoryDialog />
 {:else if project.dialog && project.dialog !== "import"}<SettingsDialogs />{/if}
 
 <style>

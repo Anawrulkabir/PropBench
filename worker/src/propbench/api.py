@@ -711,6 +711,51 @@ def model_export_coolprop(
     return {"json": text, "verification": jsonable(export.verify(m, text, t.tolist(), rho.tolist()))}
 
 
+# --- integrations: AI assistant and GitHub (M4b); credentials come from the shell (OS keychain) per request ---
+
+
+def assistant_providers() -> dict[str, Any]:
+    from propbench import assistant
+
+    return {"providers": [{"id": k, **v} for k, v in assistant.PROVIDERS.items()]}
+
+
+def assistant_ask(
+    provider: str,
+    model: str,
+    messages: Sequence[Mapping[str, str]],
+    api_key: str | None = None,
+    base_url: str | None = None,
+    context: str = "",
+) -> dict[str, Any]:
+    """A reply and the changes it proposes (data only: the app applies a proposal after the user confirms)."""
+    from propbench import assistant
+
+    return assistant.ask(provider, model, messages, api_key, base_url, context)
+
+
+def github_device_start(client_id: str) -> dict[str, Any]:
+    from propbench import github
+
+    return github.device_start(client_id)
+
+
+def github_device_poll(client_id: str, device_code: str) -> dict[str, Any]:
+    from propbench import github
+
+    return github.device_poll(client_id, device_code)
+
+
+def github_push(
+    token: str, owner: str, repo: str, branch: str, files: Mapping[str, str], message: str
+) -> dict[str, Any]:
+    """Push the project mirror (path → UTF-8 text) as one commit on ``branch``."""
+    from propbench import github
+
+    encoded = github.encode_files({k: v.encode("utf-8") for k, v in files.items()})
+    return github.push(token, owner, repo, branch, encoded, message)
+
+
 # --- project environments (M1c) ---
 
 
@@ -773,6 +818,8 @@ def env_run(
 
 
 __all__ = [
+    "assistant_ask",
+    "assistant_providers",
     "components_datasets",
     "components_install",
     "components_install_file",
@@ -792,6 +839,9 @@ __all__ = [
     "figure_presets",
     "figure_render",
     "fluids",
+    "github_device_poll",
+    "github_device_start",
+    "github_push",
     "gum_linear",
     "gum_montecarlo",
     "jsonable",

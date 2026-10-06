@@ -4,6 +4,8 @@
   import { errorMessage, worker } from "../lib/api";
   import { project } from "../lib/project.svelte";
   import { uniqueName } from "../lib/study";
+  import AssistantPanel from "./AssistantPanel.svelte";
+  import MonacoEditor from "./MonacoEditor.svelte";
   import TerminalPane from "./TerminalPane.svelte";
 
   interface RunResult {
@@ -104,18 +106,6 @@
     envAction("Recreate from lock", () => worker<{ lock: string }>("env.sync", { project: envName, lock: project.environment.lock }));
   }
 
-  function onKey(e: KeyboardEvent) {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-      e.preventDefault();
-      if (!running) run();
-    } else if (e.key === "Tab") {
-      e.preventDefault();
-      const el = e.currentTarget as HTMLTextAreaElement;
-      const { selectionStart: a, selectionEnd: b } = el;
-      project.scripts[current] = project.scripts[current].slice(0, a) + "    " + project.scripts[current].slice(b);
-      requestAnimationFrame(() => el.setSelectionRange(a + 4, a + 4));
-    }
-  }
 </script>
 
 <div class="code">
@@ -145,10 +135,11 @@
       <button class="btn default" onclick={run} disabled={running}>{running ? "Running…" : "▷ Run in project environment"}</button>
       <label class="row">Time limit <input class="field num" type="number" min="1" bind:value={timeout} /> s</label>
       <label class="row">Memory <input class="field num" type="number" min="64" step="64" bind:value={memory} /> MB</label>
+      <label class="row" title="Write fits and validations done in the GUI to recorded.py"><input type="checkbox" bind:checked={project.recording} /> Record GUI actions</label>
       <span class="spacer"></span>
       <span class="muted">Ctrl+Enter runs · scripts are saved with the project</span>
     </div>
-    <textarea class="field editor mono" bind:value={project.scripts[current]} onkeydown={onKey} spellcheck="false" aria-label="Script editor"></textarea>
+    <MonacoEditor value={project.scripts[current] ?? ""} onchange={(v) => (project.scripts[current] = v)} onrun={() => !running && run()} />
     <div class="tabs">
       <button class:on={tab === "output"} onclick={() => (tab = "output")}>Output</button>
       <button class:on={tab === "terminal"} onclick={() => (tab = "terminal")}>Terminal</button>
@@ -170,16 +161,13 @@
       {/if}
     </div>
   </div>
-  <aside class="ai">
-    <div class="head">AI assistant</div>
-    <div class="notice">Planned for M4b. AI output never changes code or data without your confirmation, and keys stay in the OS keychain.</div>
-  </aside>
+  <AssistantPanel script={project.scripts[current] ?? ""} onscript={(n) => (current = n)} />
 </div>
 
 <style>
   .code {
     display: grid;
-    grid-template-columns: 220px minmax(0, 1fr) 200px;
+    grid-template-columns: 220px minmax(0, 1fr) 260px;
     gap: 6px;
     height: 100%;
     min-height: 0;
@@ -218,7 +206,11 @@
     font-size: 10px;
     white-space: pre-wrap;
   }
+  .editor-col > .row {
+    flex-wrap: wrap;
+  }
   .editor-col {
+    min-width: 0;
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto 200px;
     gap: 4px;
@@ -226,13 +218,6 @@
   }
   .num {
     width: 64px;
-  }
-  .editor {
-    min-height: 0;
-    padding: 6px;
-    font-size: 12px;
-    line-height: 1.5;
-    resize: none;
   }
   .tabs {
     display: flex;
@@ -263,10 +248,5 @@
   }
   .dim {
     color: #8a8;
-  }
-  .ai {
-    display: grid;
-    gap: 6px;
-    align-content: start;
   }
 </style>

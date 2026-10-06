@@ -95,7 +95,27 @@ export type WorkerMethod =
 
 /** Run one worker operation through the `worker` Tauri command → pb-engine → Python worker. */
 export function worker<T>(method: WorkerMethod, params: object = {}): Promise<T> {
-  return invoke<T>("worker", { method, params });
+  return invoke<T>("worker", { method, params, target: runOn.target });
+}
+
+/** Where computations run: "local", or "remote" (the engine connected over SSH; the shell keeps file operations
+ * local and sends only computations there). */
+export const runOn: { target: "local" | "remote"; host: string } = { target: "local", host: "" };
+
+export interface RemoteTarget {
+  host: string;
+  user: string | null;
+  port: number | null;
+  identity: string | null;
+  python: string;
+}
+
+export function remoteConnect(target: RemoteTarget): Promise<{ protocol: number; propbench: string; python: string; coolprop: string }> {
+  return invoke("remote_connect", { target });
+}
+
+export function remoteDisconnect(): Promise<void> {
+  return invoke("remote_disconnect");
 }
 
 /** Stop the running worker operation; pending calls fail with kind "cancelled". */

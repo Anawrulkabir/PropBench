@@ -4,7 +4,9 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use pb_engine::store::{Project, ResultCache, StoreError, now_seconds};
-use pb_engine::{Engine, EngineConfig, EngineError, Method, PropertyRequest, PropertyResult, WorkerCommand};
+use pb_engine::{
+    Engine, EngineConfig, EngineError, Method, PropertyRequest, PropertyResult, RemoteTarget, WorkerCommand, WorkerInfo,
+};
 use pb_term::{Terminal, activated_env, activation_command, default_shell};
 use serde::Serialize;
 use serde_json::Value;
@@ -116,19 +118,86 @@ pub async fn property<R: Runtime>(
     Ok(state.engine(&app)?.property(&request).await?)
 }
 
+/// The remote engine (README §4d), when connected: a worker on another machine over the user's SSH.
+#[derive(Default)]
+pub struct RemoteEngine(tokio::sync::Mutex<Option<(RemoteTarget, Arc<Engine>)>>);
+
+/// Operations that may run on the remote engine: computations on data sent with the request. Everything that
+/// touches this computer's files (components, environments, scripts) stays local.
+fn remote_capable(method: Method) -> bool {
+    matches!(
+        method,
+        Method::ModelFit
+            | Method::StudyValidate
+            | Method::ConsistencyAnalyze
+            | Method::ModelCompare
+            | Method::ModelPredict
+            | Method::CurveFit
+            | Method::GumMonteCarlo
+    )
+}
+
+/// Connect to a remote engine and return the versions it reports (same protocol required).
+#[tauri::command]
+pub async fn remote_connect(
+    remote: tauri::State<'_, RemoteEngine>,
+    target: RemoteTarget,
+) -> Result<WorkerInfo, CommandError> {
+    let command = WorkerCommand::ssh(&target, &["ssh".into()])?;
+    let engine = Arc::new(Engine::new(EngineConfig::new(command)));
+    let info = engine.start().await?;
+    let old = remote.0.lock().await.replace((target, engine));
+    if let Some((_, old)) = old {
+        old.shutdown().await;
+    }
+    Ok(info)
+}
+
+#[tauri::command]
+pub async fn remote_disconnect(remote: tauri::State<'_, RemoteEngine>) -> Result<(), CommandError> {
+    if let Some((_, engine)) = remote.0.lock().await.take() {
+        engine.shutdown().await;
+    }
+    Ok(())
+}
+
 /// One worker operation of protocol v2 (`pb_engine::Method`, e.g. `model.fit`) with JSON params. Only the methods
-/// in that whitelist can be called.
+/// in that whitelist can be called. With `target: "remote"` a computation runs on the connected remote engine.
 #[tauri::command]
 pub async fn worker<R: Runtime>(
     app: AppHandle<R>,
     state: tauri::State<'_, AppEngine>,
+    remote: tauri::State<'_, RemoteEngine>,
     method: String,
     params: Option<Value>,
+    target: Option<String>,
 ) -> Result<Value, CommandError> {
     let method = Method::from_name(&method).ok_or_else(|| CommandError {
         kind: "invalid_input",
         message: format!("unknown worker method `{method}`"),
     })?;
+    if method.needs_credentials() {
+        return Err(CommandError {
+            kind: "invalid_input",
+            message: format!(
+                "`{}` takes credentials from the keychain: use its own command",
+                method.name()
+            ),
+        });
+    }
+    if target.as_deref() == Some("remote") && remote_capable(method) {
+        let engine = remote
+            .0
+            .lock()
+            .await
+            .as_ref()
+            .map(|(_, e)| Arc::clone(e))
+            .ok_or_else(|| CommandError {
+                kind: "worker_start",
+                message: "no remote engine connected (Settings › Remote compute)".into(),
+            })?;
+        return Ok(engine.invoke(method, params.unwrap_or(Value::Null)).await?);
+    }
     let engine = state.engine(&app)?;
     let (result, _cached) = engine
         .invoke_cached(method, params.unwrap_or(Value::Null), state.cache(&app))
@@ -365,4 +434,184 @@ pub async fn terminal_close(terminals: tauri::State<'_, Terminals>, id: u32) -> 
         term.kill();
     }
     Ok(())
+}
+
+// --- credentials (OS keychain), AI assistant, GitHub and project history (README §4d) ---
+
+fn secret_name(name: &str) -> Result<&str, CommandError> {
+    if name.starts_with("ai.") || name.starts_with("github.") {
+        Ok(name)
+    } else {
+        Err(CommandError {
+            kind: "invalid_input",
+            message: format!("`{name}` is not a PropBench credential"),
+        })
+    }
+}
+
+fn secret_error(err: pb_secrets::SecretError) -> CommandError {
+    CommandError {
+        kind: "keychain",
+        message: err.to_string(),
+    }
+}
+
+/// Store a credential in the OS keychain. There is no command to read one back: keys never reach the UI.
+#[tauri::command]
+pub async fn secret_set(name: String, value: String) -> Result<(), CommandError> {
+    pb_secrets::set(secret_name(&name)?, value.trim()).map_err(secret_error)
+}
+
+#[tauri::command]
+pub async fn secret_has(name: String) -> Result<bool, CommandError> {
+    pb_secrets::has(secret_name(&name)?).map_err(secret_error)
+}
+
+#[tauri::command]
+pub async fn secret_delete(name: String) -> Result<(), CommandError> {
+    pb_secrets::delete(secret_name(&name)?).map_err(secret_error)
+}
+
+/// Ask the AI assistant; the key of `provider` is taken from the keychain for this request only.
+#[tauri::command]
+pub async fn assistant_ask<R: Runtime>(
+    app: AppHandle<R>,
+    state: tauri::State<'_, AppEngine>,
+    provider: String,
+    model: String,
+    base_url: Option<String>,
+    messages: Value,
+    context: String,
+) -> Result<Value, CommandError> {
+    let key = pb_secrets::get(&format!("ai.{provider}")).map_err(secret_error)?;
+    let params = serde_json::json!({
+        "provider": provider, "model": model, "base_url": base_url, "messages": messages,
+        "context": context, "api_key": key,
+    });
+    Ok(state.engine(&app)?.invoke(Method::AssistantAsk, params).await?)
+}
+
+/// Start GitHub's device flow with the OAuth app's client id; the UI shows the code to enter on github.com.
+#[tauri::command]
+pub async fn github_signin_start<R: Runtime>(
+    app: AppHandle<R>,
+    state: tauri::State<'_, AppEngine>,
+    client_id: String,
+) -> Result<Value, CommandError> {
+    Ok(state
+        .engine(&app)?
+        .invoke(Method::GithubDeviceStart, serde_json::json!({ "client_id": client_id }))
+        .await?)
+}
+
+/// Poll the device flow; on success the token goes straight to the keychain (`github.token`).
+#[tauri::command]
+pub async fn github_signin_poll<R: Runtime>(
+    app: AppHandle<R>,
+    state: tauri::State<'_, AppEngine>,
+    client_id: String,
+    device_code: String,
+) -> Result<String, CommandError> {
+    let res = state
+        .engine(&app)?
+        .invoke(
+            Method::GithubDevicePoll,
+            serde_json::json!({ "client_id": client_id, "device_code": device_code }),
+        )
+        .await?;
+    let status = res
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or("pending")
+        .to_owned();
+    if let Some(token) = res.get("token").and_then(Value::as_str) {
+        pb_secrets::set("github.token", token).map_err(secret_error)?;
+    }
+    Ok(status)
+}
+
+/// Push the project's Git mirror to `owner/repo` on `branch` with the token from the keychain.
+#[tauri::command]
+pub async fn github_push<R: Runtime>(
+    app: AppHandle<R>,
+    state: tauri::State<'_, AppEngine>,
+    owner: String,
+    repo: String,
+    branch: String,
+    message: String,
+    project: Project,
+) -> Result<Value, CommandError> {
+    let token = pb_secrets::get("github.token")
+        .map_err(secret_error)?
+        .ok_or_else(|| CommandError {
+            kind: "keychain",
+            message: "sign in to GitHub first (Settings › GitHub)".into(),
+        })?;
+    let files: serde_json::Map<String, Value> = pb_git::mirror_files(&project)
+        .map_err(git_error)?
+        .into_iter()
+        .map(|(k, v)| (k, Value::String(String::from_utf8_lossy(&v).into_owned())))
+        .collect();
+    let params = serde_json::json!({
+        "token": token, "owner": owner, "repo": repo, "branch": branch, "files": files, "message": message,
+    });
+    Ok(state.engine(&app)?.invoke(Method::GithubPush, params).await?)
+}
+
+fn git_error(err: pb_git::GitError) -> CommandError {
+    CommandError {
+        kind: "git",
+        message: err.to_string(),
+    }
+}
+
+/// Folder of a project's Git history: next to a saved project (`<name>.history`), else in the app data folder.
+fn history_dir<R: Runtime>(app: &AppHandle<R>, path: Option<&str>, name: &str) -> Option<PathBuf> {
+    match path {
+        Some(p) => {
+            let p = PathBuf::from(p);
+            let stem = p.file_stem()?.to_string_lossy().into_owned();
+            Some(p.with_file_name(format!("{stem}.history")))
+        }
+        None => {
+            let slug: String = name
+                .chars()
+                .map(|c| {
+                    if c.is_ascii_alphanumeric() {
+                        c.to_ascii_lowercase()
+                    } else {
+                        '-'
+                    }
+                })
+                .collect();
+            Some(app.path().app_data_dir().ok()?.join("history").join(slug))
+        }
+    }
+}
+
+/// Commit the project's mirror to its history; `None` when nothing changed since the last commit.
+#[tauri::command]
+pub async fn history_commit<R: Runtime>(
+    app: AppHandle<R>,
+    path: Option<String>,
+    message: String,
+    project: Project,
+) -> Result<Option<pb_git::CommitInfo>, CommandError> {
+    let dir = history_dir(&app, path.as_deref(), &project.meta.name).ok_or_else(|| CommandError {
+        kind: "git",
+        message: "no folder for the history".into(),
+    })?;
+    pb_git::commit(&dir, &project, &message, "PropBench user", "propbench@localhost").map_err(git_error)
+}
+
+#[tauri::command]
+pub async fn history_list<R: Runtime>(
+    app: AppHandle<R>,
+    path: Option<String>,
+    name: String,
+) -> Result<Vec<pb_git::CommitInfo>, CommandError> {
+    let Some(dir) = history_dir(&app, path.as_deref(), &name) else {
+        return Ok(Vec::new());
+    };
+    pb_git::history(&dir, 200).map_err(git_error)
 }

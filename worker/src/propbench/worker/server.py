@@ -65,6 +65,11 @@ METHODS: dict[str, Callable[..., dict[str, Any]]] = {
     "figure.presets": api.figure_presets,
     "report.render": api.report_render,
     "model.export_coolprop": api.model_export_coolprop,
+    "assistant.providers": api.assistant_providers,
+    "assistant.ask": api.assistant_ask,
+    "github.device_start": api.github_device_start,
+    "github.device_poll": api.github_device_poll,
+    "github.push": api.github_push,
 }
 
 PARSE_ERROR = -32700

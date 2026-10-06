@@ -87,10 +87,20 @@ pub enum Method {
     ReportRender,
     #[serde(rename = "model.export_coolprop")]
     ModelExportCoolProp,
+    #[serde(rename = "assistant.providers")]
+    AssistantProviders,
+    #[serde(rename = "assistant.ask")]
+    AssistantAsk,
+    #[serde(rename = "github.device_start")]
+    GithubDeviceStart,
+    #[serde(rename = "github.device_poll")]
+    GithubDevicePoll,
+    #[serde(rename = "github.push")]
+    GithubPush,
 }
 
 impl Method {
-    pub const ALL: [Method; 37] = [
+    pub const ALL: [Method; 42] = [
         Method::Fluids,
         Method::Properties,
         Method::DatasetPreview,
@@ -128,6 +138,11 @@ impl Method {
         Method::FigurePresets,
         Method::ReportRender,
         Method::ModelExportCoolProp,
+        Method::AssistantProviders,
+        Method::AssistantAsk,
+        Method::GithubDeviceStart,
+        Method::GithubDevicePoll,
+        Method::GithubPush,
     ];
 
     /// The JSON-RPC method name.
@@ -170,11 +185,25 @@ impl Method {
             Method::FigurePresets => "figure.presets",
             Method::ReportRender => "report.render",
             Method::ModelExportCoolProp => "model.export_coolprop",
+            Method::AssistantProviders => "assistant.providers",
+            Method::AssistantAsk => "assistant.ask",
+            Method::GithubDeviceStart => "github.device_start",
+            Method::GithubDevicePoll => "github.device_poll",
+            Method::GithubPush => "github.push",
         }
     }
 
     pub fn from_name(name: &str) -> Option<Method> {
         Method::ALL.into_iter().find(|m| m.name() == name)
+    }
+
+    /// Operations that take credentials (API keys, tokens): the shell adds them from the OS keychain, so the UI
+    /// cannot call these directly.
+    pub fn needs_credentials(self) -> bool {
+        matches!(
+            self,
+            Method::AssistantAsk | Method::GithubPush | Method::GithubDevicePoll
+        )
     }
 
     /// Time limit of one request: fits and validation studies may run long, everything else gets the default.
