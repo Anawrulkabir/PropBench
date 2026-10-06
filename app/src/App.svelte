@@ -93,14 +93,47 @@
     project.note("Results exported as propbench-results.json");
   }
 
-  const PROJECT_FILE = "M1a (project file format pending approval)";
+  function snapshotPrompt() {
+    const label = window.prompt("Snapshot name", `Snapshot ${project.snapshots.length + 1}`);
+    if (label) project.snapshot(label);
+  }
+
+  function onKey(e: KeyboardEvent) {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    const k = e.key.toLowerCase();
+    if (k === "s") {
+      e.preventDefault();
+      project.saveProject(e.shiftKey);
+    } else if (k === "z" && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+      e.preventDefault();
+      project.undo();
+    } else if (k === "o") {
+      e.preventDefault();
+      project.openProject();
+    }
+  }
+
+  // Recovery copy of unsaved work every minute (app data folder only); offer the last one at start-up.
+  $effect(() => {
+    project.recover();
+    const timer = setInterval(() => project.autosave(), 60_000);
+    return () => clearInterval(timer);
+  });
   const menus: { label: string; items: MenuItem[] }[] = $derived([
     {
       label: "File",
       items: [
+        { label: "New project", action: () => project.newProject(), disabled: busy },
         { label: "New project wizard…", action: () => (project.dialog = "wizard") },
-        { label: "Open project…", disabled: true, note: PROJECT_FILE },
-        { label: "Save project", disabled: true, note: PROJECT_FILE },
+        { label: "Open project…", action: () => project.openProject(), disabled: busy, note: "Ctrl+O" },
+        { label: "Save project", action: () => project.saveProject(), disabled: busy, note: "Ctrl+S" },
+        { label: "Save project as…", action: () => project.saveProject(true), disabled: busy, note: "Ctrl+Shift+S" },
+        { separator: true, label: "" },
+        { label: "Create snapshot…", action: snapshotPrompt, disabled: busy },
+        ...project.snapshots
+          .slice(-8)
+          .reverse()
+          .map((s) => ({ label: `Restore snapshot ${s.id}: ${s.label}`, action: () => project.restore(s.id), disabled: busy })),
         { separator: true, label: "" },
         { label: "Import data…", action: () => (project.importOpen = true), disabled: busy },
         { label: "Export results (JSON)…", action: exportResults, disabled: !hasData },
@@ -111,7 +144,12 @@
     {
       label: "Edit",
       items: [
-        { label: "Undo", disabled: true, note: "M1a" },
+        {
+          label: project.undoStack.length ? `Undo ${project.undoStack[project.undoStack.length - 1].label}` : "Undo",
+          action: () => project.undo(),
+          disabled: busy || !project.undoStack.length,
+          note: "Ctrl+Z",
+        },
         { label: "Mask points in worksheet…", action: () => project.datasets[0] && project.openWorksheet(project.worksheet ?? project.datasets[0].name), disabled: !hasData },
       ],
     },
@@ -217,13 +255,14 @@
   });
 </script>
 
-<svelte:head><title>{project.name} - PropBench</title></svelte:head>
+<svelte:head><title>{project.name}{project.isDirty() ? " *" : ""} - PropBench</title></svelte:head>
+<svelte:window onkeydown={onKey} />
 
 <div class="window">
   <MenuBar {menus} />
   <div class="toolbar row">
-    <button class="tool btn" disabled title="Open a project: {PROJECT_FILE}"><Icon name="open" />Open</button>
-    <button class="tool btn" disabled title="Save the project: {PROJECT_FILE}"><Icon name="save" />Save</button>
+    <button class="tool btn" onclick={() => project.openProject()} disabled={busy} title="Open a project (Ctrl+O)"><Icon name="open" />Open</button>
+    <button class="tool btn" onclick={() => project.saveProject()} disabled={busy} title="Save the project (Ctrl+S)"><Icon name="save" />Save</button>
     <span class="sep"></span>
     <button class="tool btn" onclick={() => (project.importOpen = true)} disabled={busy}><Icon name="import" />Import</button>
     <button class="tool btn" onclick={() => project.checkData()} disabled={busy || !hasData}><Icon name="check" />Check</button>

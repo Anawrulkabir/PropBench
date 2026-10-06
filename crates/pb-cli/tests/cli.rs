@@ -211,3 +211,91 @@ fn consistency_and_compare() {
     assert!(!bad.status.success());
     assert!(String::from_utf8_lossy(&bad.stderr).contains("NAME=FILE"));
 }
+
+#[test]
+fn project_files_round_trip_through_the_cli() {
+    let dir = std::env::temp_dir().join(format!("pb-cli-project-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("cf3i.pbp");
+    let file = file.to_str().unwrap();
+    let data = dir.join("data.json");
+    std::fs::write(
+        &data,
+        r#"{"datasets": [{"name": "d1", "fluid": "R13I1", "quantity": "viscosity", "values": [1e-4, 2e-4]}]}"#,
+    )
+    .unwrap();
+
+    let ok = |args: &[&str]| {
+        let out = propbench(args);
+        assert!(
+            out.status.success(),
+            "{:?}: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
+        serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap()
+    };
+    ok(&["project", "new", file, "--name", "CF3I"]);
+    assert_eq!(
+        ok(&["project", "add-datasets", file, "--data", data.to_str().unwrap()])["added"][0],
+        "d1"
+    );
+    assert_eq!(ok(&["project", "snapshot", file, "--label", "imported"])["snapshot"], 1);
+    let info = ok(&["project", "info", file]);
+    assert_eq!(info["meta"]["name"], "CF3I");
+    assert_eq!(info["datasets"][0]["points"], 2);
+    assert_eq!(info["snapshots"][0]["label"], "imported");
+
+    let json = dir.join("export.json");
+    let copy = dir.join("copy.pbp");
+    assert!(
+        propbench(&["project", "export", file, "-o", json.to_str().unwrap()])
+            .status
+            .success()
+    );
+    ok(&["project", "import", json.to_str().unwrap(), copy.to_str().unwrap()]);
+    assert_eq!(
+        ok(&["project", "info", copy.to_str().unwrap()])["datasets"],
+        info["datasets"]
+    );
+
+    std::fs::write(dir.join("bad.pbp"), b"not a project").unwrap();
+    let out = propbench(&["project", "info", dir.join("bad.pbp").to_str().unwrap()]);
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("not a PropBench project"));
+}
+
+#[test]
+fn project_files_are_shared_with_the_python_package() {
+    let python = pb_engine::resolve_worker_python(None).expect("worker Python: run `uv sync --project worker`");
+    let dir = std::env::temp_dir().join(format!("pb-cli-pyproject-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let from_py = dir.join("from_python.pbp");
+    let from_rust = dir.join("from_rust.pbp");
+    let script = format!(
+        "from propbench import project\n\
+         p = project.new('made in Python')\n\
+         p['datasets'].append({{'name': 'd', 'data': {{'name': 'd', 'fluid': 'R13I1', 'quantity': 'viscosity', 'values': [1.0]}}}})\n\
+         project.save({:?}, p)\n\
+         q = project.load({:?})\n\
+         assert q['meta']['name'] == 'made in Rust', q\n\
+         assert q['snapshots'][0]['label'] == 'snap'\n",
+        from_py.to_str().unwrap(),
+        from_rust.to_str().unwrap()
+    );
+    let out = propbench(&["project", "new", from_rust.to_str().unwrap(), "--name", "made in Rust"]);
+    assert!(out.status.success());
+    assert!(
+        propbench(&["project", "snapshot", from_rust.to_str().unwrap(), "--label", "snap"])
+            .status
+            .success()
+    );
+    let py = Command::new(python).args(["-I", "-c", &script]).output().unwrap();
+    assert!(py.status.success(), "{}", String::from_utf8_lossy(&py.stderr));
+    let info = propbench(&["project", "info", from_py.to_str().unwrap()]);
+    let info: serde_json::Value = serde_json::from_slice(&info.stdout).unwrap();
+    assert_eq!(info["meta"]["name"], "made in Python");
+    assert_eq!(info["datasets"][0]["fluid"], "R13I1");
+}

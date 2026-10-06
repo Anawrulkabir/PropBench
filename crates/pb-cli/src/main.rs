@@ -129,12 +129,124 @@ enum Command {
         #[arg(long)]
         no_references: bool,
     },
+    /// Project files (.pbp): create, inspect, add datasets, snapshot, export to and import from JSON.
+    Project {
+        #[command(subcommand)]
+        action: ProjectAction,
+    },
     /// Any worker operation by name with JSON params, e.g. `call selection.lock '{"rule": {...}}'`.
     Call {
         method: String,
         #[arg(default_value = "{}")]
         params: String,
     },
+}
+
+#[derive(Subcommand)]
+enum ProjectAction {
+    /// Create an empty project file.
+    New {
+        file: PathBuf,
+        #[arg(long, default_value = "Untitled project")]
+        name: String,
+    },
+    /// Name, dates, datasets, documents, snapshots and the audit log, as JSON.
+    Info { file: PathBuf },
+    /// Add datasets (a JSON list, or the output of `import`) to a project.
+    AddDatasets {
+        file: PathBuf,
+        #[arg(long)]
+        data: PathBuf,
+    },
+    /// Store the current datasets and documents as a named snapshot.
+    Snapshot {
+        file: PathBuf,
+        #[arg(long)]
+        label: String,
+    },
+    /// The whole project as JSON (the same content the app saves).
+    Export { file: PathBuf },
+    /// Write a project file from JSON produced by `export` (atomic).
+    Import { json: PathBuf, file: PathBuf },
+}
+
+fn store_error(err: pb_engine::store::StoreError) -> EngineError {
+    invalid(err.to_string())
+}
+
+fn project_action(action: ProjectAction) -> Result<Value, EngineError> {
+    use pb_engine::store::{DatasetRecord, Project, now_seconds};
+    let save = |mut project: Project, file: &Path| -> Result<Project, EngineError> {
+        project.meta.modified = now_seconds();
+        project.meta.app_version = env!("CARGO_PKG_VERSION").into();
+        project.save(file).map_err(store_error)?;
+        Ok(project)
+    };
+    let to_json = |v: &Project| serde_json::to_value(v).map_err(|e| EngineError::Protocol(e.to_string()));
+    match action {
+        ProjectAction::New { file, name } => {
+            let mut project = Project::new(&name);
+            project.log("create", &name);
+            let project = save(project, &file)?;
+            Ok(json!({"created": path_string(&file)?, "meta": to_json(&project)?["meta"]}))
+        }
+        ProjectAction::Info { file } => {
+            let p = Project::load(&file).map_err(store_error)?;
+            let datasets: Vec<Value> = p
+                .datasets
+                .iter()
+                .map(|d| {
+                    let n = d.data.get("values").and_then(Value::as_array).map_or(0, Vec::len);
+                    json!({"name": d.name, "fluid": d.data.get("fluid"), "quantity": d.data.get("quantity"), "points": n})
+                })
+                .collect();
+            let snapshots: Vec<Value> = p
+                .snapshots
+                .iter()
+                .map(|s| json!({"id": s.id, "label": s.label, "created": s.created}))
+                .collect();
+            Ok(json!({
+                "meta": to_json(&p)?["meta"], "datasets": datasets,
+                "documents": p.documents.keys().collect::<Vec<_>>(), "snapshots": snapshots, "audit": p.audit,
+            }))
+        }
+        ProjectAction::AddDatasets { file, data } => {
+            let mut p = Project::load(&file).map_err(store_error)?;
+            let Value::Array(list) = read_datasets(&data)? else {
+                return Err(invalid("expected a list of datasets"));
+            };
+            let mut added = Vec::new();
+            for d in list {
+                let name = d
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| invalid("a dataset has no name"))?
+                    .to_owned();
+                p.datasets.retain(|x| x.name != name);
+                p.datasets.push(DatasetRecord {
+                    name: name.clone(),
+                    data: d,
+                });
+                added.push(name);
+            }
+            p.log("import", &added.join(", "));
+            save(p, &file)?;
+            Ok(json!({"added": added}))
+        }
+        ProjectAction::Snapshot { file, label } => {
+            let mut p = Project::load(&file).map_err(store_error)?;
+            let id = p.snapshot(&label);
+            save(p, &file)?;
+            Ok(json!({"snapshot": id, "label": label}))
+        }
+        ProjectAction::Export { file } => to_json(&Project::load(&file).map_err(store_error)?),
+        ProjectAction::Import { json: source, file } => {
+            let project: Project = serde_json::from_value(read_json(&source)?)
+                .map_err(|e| invalid(format!("{}: not a project: {e}", source.display())))?;
+            save(project, &file)?;
+            Ok(json!({"written": path_string(&file)?}))
+        }
+    }
 }
 
 fn invalid(message: impl Into<String>) -> EngineError {
@@ -208,13 +320,20 @@ async fn main() -> ExitCode {
 }
 
 async fn run(cli: Cli) -> Result<String, EngineError> {
-    let python = match cli.python {
-        Some(path) => path,
-        None => resolve_worker_python(None)?,
+    let result = match cli.command {
+        // Project files need no worker.
+        Command::Project { action } => project_action(action),
+        command => {
+            let python = match cli.python {
+                Some(path) => path,
+                None => resolve_worker_python(None)?,
+            };
+            let engine = Engine::new(EngineConfig::new(WorkerCommand::python_worker(python)));
+            let result = execute(&engine, command).await;
+            engine.shutdown().await;
+            result
+        }
     };
-    let engine = Engine::new(EngineConfig::new(WorkerCommand::python_worker(python)));
-    let result = execute(&engine, cli.command).await;
-    engine.shutdown().await;
     let text = serde_json::to_string_pretty(&result?).map_err(|e| EngineError::Protocol(e.to_string()))?;
     match cli.output_file {
         Some(path) => {
@@ -314,6 +433,7 @@ async fn execute(engine: &Engine, command: Command) -> Result<Value, EngineError
             });
             (Method::ModelCompare, params)
         }
+        Command::Project { action } => return project_action(action),
         Command::Call { method, params } => {
             let method = Method::from_name(&method).ok_or_else(|| {
                 let known: Vec<&str> = Method::ALL.iter().map(|m| m.name()).collect();

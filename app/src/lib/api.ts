@@ -76,6 +76,16 @@ export function worker<T>(method: WorkerMethod, params: object = {}): Promise<T>
   return invoke<T>("worker", { method, params });
 }
 
+/** Stop the running worker operation; pending calls fail with kind "cancelled". */
+export function cancelWorker(): Promise<void> {
+  return invoke<void>("cancel");
+}
+
+/** True inside the desktop app (Tauri), false in a plain browser (e.g. UI tests). */
+export function inTauri(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
 /** Base64 of a file's bytes, to send a picked file to the worker without a filesystem path. */
 export async function fileToBase64(file: Blob): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer());

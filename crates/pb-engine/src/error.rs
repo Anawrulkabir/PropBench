@@ -24,6 +24,8 @@ pub enum EngineError {
     /// An error answered by the worker itself (JSON-RPC error object), e.g. an unknown fluid.
     #[error("{message}")]
     Rpc { code: i64, message: String },
+    #[error("cancelled")]
+    Cancelled,
     #[error("I/O error while talking to the worker: {0}")]
     Io(#[from] std::io::Error),
 }

@@ -1,6 +1,6 @@
 [package]
-name = "pb-engine"
-description = "PropBench engine: starts and supervises Python science workers (JSON-RPC 2.0 over stdio)"
+name = "pb-store"
+description = "PropBench project files (SQLite .pbp), snapshots, audit log, atomic saves and the job result cache"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,11 +8,13 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-pb-store.workspace = true
+rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["process", "io-util", "sync", "time", "rt", "macros"] }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+rusqlite.workspace = true

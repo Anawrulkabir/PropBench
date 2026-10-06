@@ -11,8 +11,18 @@ use tauri::{Manager, RunEvent, Runtime};
 /// Everything the app registers, shared by `main` and the IPC tests.
 fn builder<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     builder
+        .plugin(tauri_plugin_dialog::init())
         .manage(commands::AppEngine::default())
-        .invoke_handler(tauri::generate_handler![commands::property, commands::worker])
+        .invoke_handler(tauri::generate_handler![
+            commands::property,
+            commands::worker,
+            commands::cancel,
+            commands::project_save,
+            commands::project_open,
+            commands::project_autosave,
+            commands::project_recover,
+            commands::project_discard_autosave
+        ])
 }
 
 fn main() -> ExitCode {

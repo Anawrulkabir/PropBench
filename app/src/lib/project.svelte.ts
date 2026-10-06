@@ -1,7 +1,21 @@
 // The open project: datasets, candidate models, studies and the output log. All computation goes through the
 // worker (`worker()` → Tauri → pb-engine → Python); this module only keeps state and sequences the calls.
 
-import { errorMessage, fileToBase64, worker } from "./api";
+import { invoke } from "@tauri-apps/api/core";
+import { ask, open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { cancelWorker, errorMessage, fileToBase64, inTauri, worker } from "./api";
+import {
+  addSnapshot,
+  type AuditEntry,
+  fingerprint,
+  fromContent,
+  nowSeconds,
+  type ProjectContent,
+  restoreSnapshot,
+  type SavedState,
+  type Snapshot,
+  toContent,
+} from "./projectfile";
 import { applyMask, type Candidate, commonTarget, selectionCandidates, uniqueName } from "./study";
 import type {
   CheckEntry,
@@ -67,7 +81,7 @@ class Project {
   candidates = $state<Candidate[]>([]);
   kinds = $state<ModelKind[]>([]);
   settings = $state<StudySettings>({
-    methods: ["loso"],
+    methods: ["lostate"],
     k: 5,
     nBootstrap: 50,
     seed: 0,
@@ -78,7 +92,7 @@ class Project {
   });
   rule = $state<SelectionRule>({
     metric: "cv_aard",
-    validation: "loso",
+    validation: "lostate",
     tie_tolerance: 0.05,
     require_physics: true,
     notes: "",
@@ -99,6 +113,37 @@ class Project {
   stopRequested = $state(false);
   /** Document tabs of the work area, in order (fixed ones first, then tabs opened from the menus). */
   tabs = $state<View[]>(["data", "consistency", "deviations", "fit", "fitting", "study", "results"]);
+
+  /** Path of the open project file, or null for a project not saved yet. */
+  filePath = $state<string | null>(null);
+  /** Snapshots stored in the project file (newest last). */
+  snapshots = $state<Snapshot[]>([]);
+  /** Fingerprint of the state last saved or opened; the project is dirty when the current one differs. */
+  savedFingerprint = $state("");
+  /** Content last saved or opened (keeps creation time, audit and documents of newer versions). */
+  private fileContent: ProjectContent | null = null;
+  /** Audit entries since the last save. */
+  private pendingAudit: AuditEntry[] = [];
+
+  /** Earlier states for Edit › Undo (masking, removing, importing), newest last. */
+  undoStack = $state<{ label: string; state: string }[]>([]);
+
+  /** Remember the current state before a change that Undo can revert. */
+  checkpoint(label: string) {
+    this.undoStack.push({ label, state: JSON.stringify(this.savedState()) });
+    if (this.undoStack.length > 30) this.undoStack.shift();
+  }
+
+  undo() {
+    const last = this.undoStack.pop();
+    if (!last) return;
+    this.apply(JSON.parse(last.state) as SavedState);
+    this.note(`Undid: ${last.label}`);
+  }
+
+  constructor() {
+    this.savedFingerprint = fingerprint(this.savedState());
+  }
 
   open(view: View) {
     if (!this.tabs.includes(view)) this.tabs.push(view);
@@ -125,7 +170,9 @@ class Project {
     try {
       return await step();
     } catch (err) {
-      this.note(`${label} failed: ${errorMessage(err)}`, "error");
+      const kind = typeof err === "object" && err !== null && "kind" in err ? (err as { kind: string }).kind : "";
+      if (kind === "cancelled") this.note(`${label} stopped`, "warn");
+      else this.note(`${label} failed: ${errorMessage(err)}`, "error");
       return null;
     } finally {
       this.busy = null;
@@ -138,6 +185,7 @@ class Project {
   }
 
   setMask(name: string, ids: number[], masked: boolean) {
+    this.checkpoint(`${masked ? "mask" : "unmask"} ${ids.length} point${ids.length === 1 ? "" : "s"} of ${name}`);
     const current = new Set(this.masks[name] ?? []);
     for (const id of ids) {
       if (masked) current.add(id);
@@ -145,6 +193,7 @@ class Project {
     }
     this.masks[name] = [...current].sort((a, b) => a - b);
     this.invalidateResults();
+    this.audit(masked ? "mask" : "unmask", `${name}: ${ids.join(", ")}`);
     this.note(`${name}: ${ids.length} point${ids.length === 1 ? "" : "s"} ${masked ? "masked" : "unmasked"} (${current.size} masked)`);
   }
 
@@ -154,11 +203,188 @@ class Project {
     this.open("worksheet");
   }
 
-  /** Ask a running sequence (fit all, study) to stop after the current step. */
+  /** Stop: the running worker operation is cancelled and a running sequence (fit all, study) stops. */
   stop() {
     if (!this.busy) return;
     this.stopRequested = true;
-    this.note("Stop requested: the sequence stops after the current step", "warn");
+    this.note("Stopping: the running operation is cancelled", "warn");
+    if (inTauri()) cancelWorker().catch(() => undefined);
+  }
+
+  // --- project file (.pbp) ---
+
+  audit(action: string, detail: string) {
+    this.pendingAudit.push({ time: nowSeconds(), action, detail });
+  }
+
+  savedState(): SavedState {
+    return {
+      name: this.name,
+      datasets: this.datasets,
+      checks: this.checks,
+      candidates: this.candidates,
+      settings: this.settings,
+      rule: this.rule,
+      locked: this.locked,
+      selection: this.selection,
+      masks: this.masks,
+      consistency: this.consistency,
+      comparison: this.comparison,
+      consistencySettings: this.consistencySettings,
+    };
+  }
+
+  private defaults(): SavedState {
+    return {
+      name: "Untitled project",
+      datasets: [],
+      checks: {},
+      candidates: [],
+      settings: { methods: ["lostate"], k: 5, nBootstrap: 50, seed: 0, workers: 1, weighted: true, scaleFactors: false, multistart: 0 },
+      rule: { metric: "cv_aard", validation: "lostate", tie_tolerance: 0.05, require_physics: true, notes: "" },
+      locked: null,
+      selection: null,
+      masks: {},
+      consistency: null,
+      comparison: null,
+      consistencySettings: { tTol: 1.0, references: true },
+    };
+  }
+
+  private apply(state: SavedState) {
+    this.name = state.name;
+    this.datasets = state.datasets;
+    this.checks = state.checks;
+    this.candidates = state.candidates;
+    this.settings = state.settings as StudySettings;
+    this.rule = state.rule;
+    this.locked = state.locked;
+    this.selection = state.selection;
+    this.masks = state.masks;
+    this.consistency = state.consistency;
+    this.comparison = state.comparison;
+    this.consistencySettings = state.consistencySettings as { tTol: number; references: boolean };
+    this.selected = null;
+    this.worksheet = null;
+  }
+
+  isDirty(): boolean {
+    return fingerprint(this.savedState()) !== this.savedFingerprint;
+  }
+
+  private loaded(content: ProjectContent, path: string | null) {
+    this.undoStack = [];
+    this.apply(fromContent(content, this.defaults()));
+    this.fileContent = content;
+    this.snapshots = content.snapshots;
+    this.filePath = path;
+    this.pendingAudit = [];
+    this.savedFingerprint = fingerprint(this.savedState());
+  }
+
+  /** Ask before discarding unsaved changes; true when it is fine to go on. */
+  private async confirmDiscard(): Promise<boolean> {
+    if (!this.isDirty()) return true;
+    const text = `${this.name} has unsaved changes. Discard them?`;
+    return inTauri() ? ask(text, { title: "PropBench", kind: "warning" }) : window.confirm(text);
+  }
+
+  async newProject() {
+    if (!(await this.confirmDiscard())) return;
+    this.loaded(toContent(this.defaults(), null, []), null);
+    this.consistency = null;
+    this.log = [];
+    this.note("New project");
+    this.discardAutosave();
+  }
+
+  async openProject(path?: string) {
+    if (!(await this.confirmDiscard())) return;
+    const chosen =
+      path ?? (await openDialog({ multiple: false, directory: false, filters: [{ name: "PropBench project", extensions: ["pbp"] }] }));
+    if (typeof chosen !== "string") return;
+    const content = await this.run("Open project", () => invoke<ProjectContent>("project_open", { path: chosen }));
+    if (!content) return;
+    this.loaded(content, chosen);
+    this.note(`Opened ${chosen}: ${content.datasets.length} datasets, ${content.snapshots.length} snapshots`);
+  }
+
+  /** Save to the current file, or ask for one (always with `saveAs`). Returns true when saved. */
+  async saveProject(saveAs = false): Promise<boolean> {
+    let path = saveAs ? null : this.filePath;
+    if (!path) {
+      const chosen = await saveDialog({
+        defaultPath: `${this.name.replace(/[\\/:*?"<>|]+/g, "_")}.pbp`,
+        filters: [{ name: "PropBench project", extensions: ["pbp"] }],
+      });
+      if (!chosen) return false;
+      path = chosen.endsWith(".pbp") ? chosen : `${chosen}.pbp`;
+    }
+    const target = path;
+    const content = toContent(this.savedState(), this.fileContent, this.pendingAudit);
+    const saved = await this.run("Save project", () => invoke<ProjectContent>("project_save", { path: target, project: content }));
+    if (!saved) return false;
+    this.loaded(saved, target);
+    this.note(`Saved ${target}`);
+    return true;
+  }
+
+  /** Recovery copy in the app data folder when there are unsaved changes (called on a timer). */
+  async autosave() {
+    if (!inTauri() || this.busy || !this.isDirty()) return;
+    const content = toContent(this.savedState(), this.fileContent, this.pendingAudit);
+    try {
+      await invoke("project_autosave", { project: content });
+    } catch (err) {
+      this.note(`Autosave failed: ${errorMessage(err)}`, "warn");
+    }
+  }
+
+  discardAutosave() {
+    if (inTauri()) invoke("project_discard_autosave").catch(() => undefined);
+  }
+
+  /** At start-up: offer the recovery copy of a session that ended without saving. */
+  async recover() {
+    if (!inTauri()) return;
+    try {
+      const content = await invoke<ProjectContent | null>("project_recover");
+      if (!content) return;
+      const when = new Date(content.meta.modified * 1000).toLocaleString();
+      const yes = await ask(`Restore the unsaved project "${content.meta.name}" from ${when}?`, {
+        title: "PropBench: recover project",
+        kind: "info",
+      });
+      if (yes) {
+        this.loaded(content, null);
+        this.savedFingerprint = "";
+        this.note(`Recovered unsaved project ${content.meta.name} (save it to keep it)`, "warn");
+      } else {
+        this.discardAutosave();
+      }
+    } catch (err) {
+      this.note(`Recovery copy could not be read: ${errorMessage(err)}`, "warn");
+    }
+  }
+
+  /** Store the current datasets and settings as a named snapshot (kept in the file at the next save). */
+  snapshot(label: string) {
+    const base = toContent(this.savedState(), this.fileContent, this.pendingAudit);
+    this.pendingAudit = [];
+    const content = addSnapshot(base, label);
+    this.fileContent = content;
+    this.snapshots = content.snapshots;
+    this.note(`Snapshot ${content.snapshots[content.snapshots.length - 1].id}: ${label}`);
+  }
+
+  async restore(id: number) {
+    if (!this.fileContent) return;
+    if (!(await this.confirmDiscard())) return;
+    const content = restoreSnapshot(this.fileContent, id);
+    const fp = this.savedFingerprint;
+    this.loaded(content, this.filePath);
+    this.savedFingerprint = fp; // restoring is a change: save to keep it
+    this.note(`Restored snapshot ${id}`);
   }
 
   // --- data ---
@@ -183,12 +409,14 @@ class Project {
         fluid,
         name,
       });
+      this.checkpoint(`import ${file.name}`);
       const names = this.datasets.map((d) => d.name);
       for (const d of result.datasets) {
         d.name = uniqueName(names, d.name);
         names.push(d.name);
         this.datasets.push(d);
         this.note(`Imported ${d.name}: ${d.values.length} points of ${d.quantity} (${d.fluid})`);
+        this.audit("import", `${d.name}: ${d.values.length} points from ${file.name}`);
       }
       for (const w of result.warnings) this.note(w, "warn");
       this.selection = null;
@@ -227,6 +455,7 @@ class Project {
   }
 
   removeDataset(name: string) {
+    this.checkpoint(`remove ${name}`);
     this.datasets = this.datasets.filter((d) => d.name !== name);
     delete this.checks[name];
     delete this.masks[name];
@@ -288,6 +517,7 @@ class Project {
   }
 
   removeCandidate(id: string) {
+    this.checkpoint(`remove model ${this.candidate(id)?.label ?? ""}`);
     this.candidates = this.candidates.filter((c) => c.id !== id);
     this.selection = null;
   }
@@ -371,6 +601,7 @@ class Project {
     );
     if (result) {
       this.locked = { sha256: result.sha256, at: now(), rule: result.rule };
+      this.audit("lock rule", result.sha256);
       this.selection = null;
       this.note(`Selection rule locked (${result.sha256.slice(0, 12)}…) before fitting`);
     }
@@ -418,6 +649,7 @@ class Project {
     if (result) {
       this.selection = result;
       this.note(`Selected by locked rule: ${result.chosen} (${result.reason})`);
+      this.audit("select", `${result.chosen} (rule ${locked.sha256.slice(0, 12)})`);
       this.view = "results";
     }
   }
