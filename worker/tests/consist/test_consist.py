@@ -201,3 +201,15 @@ def test_trends_never_cross_the_saturation_curve():
     comps = compare_to_trends(probe, mixed, 1.0)
     assert [c.point_id for c in comps] == [0]  # the vapour point has no vapour trend to compare with
     assert comps[0].difference == pytest.approx(0.0, abs=1e-9)
+
+
+def test_monotonic_bound_needs_no_extrapolation():
+    a = dataset("lab", LAB)
+    b = dataset("old", [(333.0, 1.2e6), (333.0, 5e6), (333.0, 3e6)], factor=1.05)
+    c_low, c_high, c_inside = compare_to_trends(b, a, 1.0)
+    end_low = trend_value(333.0, 2e6)
+    assert c_low.bound_kind == "at least"  # rising with p: the 2 MPa value is an upper limit at 1.2 MPa
+    assert c_low.bound == pytest.approx(100 * (trend_value(333.0, 1.2e6) * 1.05 / end_low - 1), rel=1e-9)
+    assert c_low.bound < c_low.difference  # the bound is weaker than the extrapolated difference
+    assert c_high.bound_kind == "at most"
+    assert c_inside.bound is None

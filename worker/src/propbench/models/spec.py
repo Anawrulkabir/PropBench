@@ -7,15 +7,17 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from dataclasses import replace
+from dataclasses import asdict, replace
 from typing import Any
 
 import CoolProp.CoolProp as CP  # noqa: N817 - the name CoolProp itself documents
 
 from propbench.core import Quantity, identify_fluid
 from propbench.models.base import Model, ModelError, Parameter
+from propbench.models.critical import CriticalEnhancement
 from propbench.models.dilute import ChungViscosity, LennardJonesDiluteGas
 from propbench.models.ecs import ECSViscosity
+from propbench.models.ecs_conductivity import ECSConductivity
 from propbench.models.reference import CoolPropTransport
 
 KINDS: dict[str, dict[str, str]] = {
@@ -31,6 +33,10 @@ KINDS: dict[str, dict[str, str]] = {
         "label": "Chapman-Enskog dilute gas (viscosity)",
         "reference": "Neufeld, Janzen, Aziz, J. Chem. Phys. 57 (1972) 1100",
     },
+    "ecs_conductivity": {
+        "label": "Extended corresponding states (thermal conductivity)",
+        "reference": "McLinden, Klein, Perkins, Int. J. Refrig. 23 (2000) 43",
+    },
     "coolprop_transport": {
         "label": "CoolProp reference correlation (comparison only)",
         "reference": "the transport correlation stored in CoolProp for the fluid",
@@ -40,6 +46,7 @@ KINDS: dict[str, dict[str, str]] = {
 _CLASSES: dict[type, str] = {ECSViscosity: "ecs_viscosity", ChungViscosity: "chung_viscosity"}
 _CLASSES[LennardJonesDiluteGas] = "lj_dilute_viscosity"
 _CLASSES[CoolPropTransport] = "coolprop_transport"
+_CLASSES[ECSConductivity] = "ecs_conductivity"
 
 
 def _number(value: float) -> float | None:
@@ -88,6 +95,11 @@ def model_to_spec(model: Model) -> dict[str, Any]:
     }
     if isinstance(model, CoolPropTransport):
         pass
+    elif isinstance(model, ECSConductivity):
+        spec["viscosity"] = model_to_spec(model.viscosity)
+        spec["chi_exponents"] = list(model.chi_exponents)
+        spec["chi_rhomolar_reducing"] = model.chi_rhomolar_reducing
+        spec["critical"] = None if model.critical is None else asdict(model.critical)
     elif isinstance(model, ECSViscosity):
         spec["reference_fluid"] = model.reference_fluid
         spec["psi_exponents"] = list(model.psi_exponents)
@@ -116,6 +128,20 @@ def model_from_spec(spec: Mapping[str, Any]) -> Model:
             model = ChungViscosity(fluid, float(spec["molar_mass"]), params)
         elif kind == "lj_dilute_viscosity":
             model = LennardJonesDiluteGas(fluid, float(spec["molar_mass"]), params)
+        elif kind == "ecs_conductivity":
+            viscosity = model_from_spec(spec["viscosity"])
+            if not isinstance(viscosity, ECSViscosity):
+                raise ModelError("an ECS conductivity model needs an ECS viscosity model")
+            critical = spec.get("critical")
+            model = ECSConductivity(
+                viscosity,
+                tuple(float(e) for e in spec["chi_exponents"]),
+                float(spec["chi_rhomolar_reducing"]),
+                None if critical is None else CriticalEnhancement(**{k: float(v) for k, v in critical.items()}),
+                params,
+            )
+            if spec.get("reference"):
+                model = replace(model, source=str(spec["reference"]))  # type: ignore[type-var]
         elif kind == "coolprop_transport":
             model = CoolPropTransport.create(fluid, spec.get("quantity", "viscosity"))
         else:

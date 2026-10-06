@@ -5,7 +5,7 @@ import type { ConsistencyResponse } from "./types";
 const report: ConsistencyResponse = {
   overlaps: [{ a: "lab", b: "old", t_range: [332.5, 338.2], a_points: [0], b_points: [0, 1] }],
   comparisons: [
-    { a: "lab", b: "old", point_id: 0, temperature: 333, delta_t: 0, pressure: 1.2e6, value: 2.07e-4, trend_value: 1.97e-4, difference: 5.1, u_combined: 3.7, z: 2.76, consistent: false, extrapolated: true },
+    { a: "lab", b: "old", point_id: 0, temperature: 333, delta_t: 0, pressure: 1.2e6, value: 2.07e-4, trend_value: 1.97e-4, difference: 5.1, u_combined: 3.7, z: 2.76, consistent: false, extrapolated: true, bound: 4.9, bound_kind: "at least" },
     { a: "lab", b: "old", point_id: 1, temperature: 333, delta_t: 0, pressure: 2.5e6, value: 2.0e-4, trend_value: 1.99e-4, difference: 0.5, u_combined: 3.6, z: 0.28, consistent: true, extrapolated: false },
   ],
   trend_checks: [{ a: "lab", b: "old", temperature: 333, slope_sign: 1, violations: [[0, 0]], passed: false }],
@@ -43,7 +43,8 @@ describe("consistency summaries", () => {
     const rows = pairChecks(report, "lab", "old");
     expect(rows.map((r) => r.check)).toEqual([
       "Pressure trend at equal T",
-      "Model-free difference",
+      "Model-free difference at 333.00 K (monotonic bound)",
+      "Difference from the extended trend",
       "Combined expanded uncertainty",
       "Points outside the combined uncertainty",
       "Trend values extrapolated in pressure",
@@ -51,10 +52,11 @@ describe("consistency summaries", () => {
       "Offset of old vs models",
     ]);
     expect(rows[0]).toEqual({ check: "Pressure trend at equal T", result: "fails at 333.0 K", ok: false });
-    expect(rows[1].result).toBe("+0.50 to +5.10 %");
-    expect(rows[3]).toMatchObject({ result: "1 of 2", ok: false });
-    expect(rows[5].result).toBe("+4.70 % [2.5, 7.0] %");
-    expect(rows[6].result).toBe("+5.0 to +9.0 %");
+    expect(rows[1]).toEqual({ check: "Model-free difference at 333.00 K (monotonic bound)", result: "≥ 4.9 %", ok: false });
+    expect(rows[2].result).toBe("+0.50 to +5.10 %");
+    expect(rows[4]).toMatchObject({ result: "1 of 2", ok: false });
+    expect(rows[6].result).toBe("+4.70 % [2.5, 7.0] %");
+    expect(rows[7].result).toBe("+5.0 to +9.0 %");
     expect(pairChecks(report, "old", "lab")).toEqual([]);
   });
 });

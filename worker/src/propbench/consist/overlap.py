@@ -187,6 +187,10 @@ class Comparison:
     u_point: float  # relative standard uncertainty stated for the point of b
     u_trend: float  # relative standard uncertainty of the trend value (statistical)
     u_a: float  # mean relative standard uncertainty stated for the isotherm of a (systematic)
+    # Monotonicity bound without extrapolation: outside a's pressure range, a property monotonic in p is bounded by
+    # its value at the nearest measured end, so the difference is at least (or at most) ``bound`` %.
+    bound: float | None = None
+    bound_kind: str | None = None  # "at least" or "at most"
 
     @property
     def z(self) -> float:
@@ -211,6 +215,8 @@ class Comparison:
             "z": self.z,
             "consistent": self.consistent,
             "extrapolated": self.extrapolated,
+            "bound": self.bound,
+            "bound_kind": self.bound_kind,
         }
 
 
@@ -234,6 +240,7 @@ def compare_to_trends(b: Dataset, a: Dataset, t_tol: float = 1.0) -> list[Compar
         predicted, u_trend = nearest.predict(p)
         u_a = nearest.u_stated or 0.0
         u_point = 0.0 if u_b is None else float(u_b[i])
+        bound, kind = _monotonic_bound(nearest, p, float(b.values[i]))
         out.append(
             Comparison(
                 a.name,
@@ -250,9 +257,25 @@ def compare_to_trends(b: Dataset, a: Dataset, t_tol: float = 1.0) -> list[Compar
                 u_point,
                 u_trend,
                 u_a,
+                bound,
+                kind,
             )
         )
     return out
+
+
+def _monotonic_bound(trend: IsothermTrend, pressure: float, value: float) -> tuple[float | None, str | None]:
+    """Difference of ``value`` from the trend at the nearest end of the measured pressure range, and whether it is a
+    lower or an upper bound of the true difference (needs a significant slope, i.e. a known direction)."""
+    lo, hi = trend.p_range
+    if lo <= pressure <= hi or not trend.slope_significant:
+        return None, None
+    end = lo if pressure < lo else hi
+    end_value, _ = trend.predict(end)
+    rising = trend.coef[1] > 0
+    # below the range of a rising property the true value is lower than at the end: difference at least ...
+    at_least = (pressure < lo) == rising
+    return 100.0 * (value - end_value) / end_value, "at least" if at_least else "at most"
 
 
 @dataclass(frozen=True)

@@ -38,8 +38,16 @@ export function pairChecks(report: ConsistencyResponse, reference: string, other
   if (comps.length) {
     const inconsistent = comps.filter((c) => !c.consistent).length;
     const extrapolated = comps.filter((c) => c.extrapolated).length;
+    const bounded = comps.filter((c) => c.bound !== null && c.bound !== undefined);
+    for (const c of bounded) {
+      rows.push({
+        check: `Model-free difference at ${c.temperature.toFixed(2)} K (monotonic bound)`,
+        result: `${c.bound_kind === "at least" ? "≥" : "≤"} ${(c.bound ?? 0).toFixed(1)} %`,
+        ok: c.bound_kind === "at least" ? (c.bound ?? 0) <= c.u_combined : (c.bound ?? 0) >= -c.u_combined,
+      });
+    }
     rows.push({
-      check: "Model-free difference",
+      check: bounded.length ? "Difference from the extended trend" : "Model-free difference",
       result: rangeText(comps.map((c) => c.difference), 2),
       ok: inconsistent === 0,
     });

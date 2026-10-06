@@ -212,6 +212,8 @@ export interface ComparisonPoint {
   z: number | null;
   consistent: boolean;
   extrapolated: boolean;
+  bound?: number | null;
+  bound_kind?: "at least" | "at most" | null;
 }
 
 export interface TrendCheckResult {

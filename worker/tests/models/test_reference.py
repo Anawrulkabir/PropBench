@@ -80,6 +80,30 @@ def test_coolprop_transport_equals_coolprop(fluid):
     assert k.predict([300.0], [rho[0]])[0] == pytest.approx(CP.PropsSI("L", "T", 300.0, "Dmolar", rho[0], fluid))
 
 
+def test_ecs_conductivity_spec_round_trip_and_parts():
+    entry = next(e for e in load_registry() if e.id == "nistir8209-r13i1-conductivity")
+    model = entry.model()
+    back = model_from_spec(json.loads(json.dumps(model_to_spec(model))))
+    assert model_to_spec(back) == model_to_spec(model)
+    t, rho = 356.8, 8724.0
+    np.testing.assert_array_equal(back.predict([t], [rho]), model.predict([t], [rho]))
+    # zero density: only the dilute-gas part (modified Eucken), positive and smaller than the dense value
+    assert 0 < model.predict([t], [0.0])[0] < model.predict([t], [rho])[0]
+    assert model.predict([t], [0.0])[0] == pytest.approx(model.dilute([t])[0])
+
+
+def test_critical_enhancement_matches_coolprop():
+    """Simplified Olchowy-Sengers term against CoolProp's independent implementation (R134a, Perkins et al.)."""
+    from propbench.models.critical import CriticalEnhancement
+
+    ce = CriticalEnhancement(q_d=1892020000.0, xi0=1.94e-10, gamma0=0.0496, r0=1.03)
+    state = CP.AbstractState("HEOS", "R134a")
+    for t, p in [(380.0, 4.2e6), (376.0, 4.1e6), (400.0, 5e6), (300.0, 1e6)]:
+        state.update(CP.PT_INPUTS, p, t)
+        expected = state.conductivity_contributions()["critical"]
+        assert ce.value(state, state.viscosity()) == pytest.approx(expected, rel=1e-5)
+
+
 def test_coolprop_transport_absent_or_unsupported():
     with pytest.raises(ModelError, match="no viscosity correlation"):
         CoolPropTransport.create("R13I1")  # CoolProp has no transport model for CF3I
@@ -90,7 +114,12 @@ def test_coolprop_transport_absent_or_unsupported():
 def test_reference_models_listing_and_spec_round_trip():
     refs = reference_models("R134a", "viscosity")
     assert [label for label, _, _ in refs] == ["CoolProp viscosity correlation"]
-    assert reference_models("R13I1", "viscosity") == []  # until the NISTIR 8209 entry is added
+    cf3i = reference_models("R13I1", "viscosity")  # no CoolProp correlation: the NISTIR 8209 entry only
+    assert [label for label, _, _ in cf3i] == ["NISTIR 8209 (REFPROP 10) viscosity"]
+    assert "NIST.IR.8209" in cf3i[0][2]
+    assert [label for label, _, _ in reference_models("R13I1", "thermal_conductivity")] == [
+        "NISTIR 8209 (REFPROP 10) thermal conductivity"
+    ]
     model = default_model("coolprop_transport", "R134a")
     back = model_from_spec(json.loads(json.dumps(model_to_spec(model))))
     assert back == model
