@@ -2,7 +2,7 @@
 // worker (`worker()` → Tauri → pb-engine → Python); this module only keeps state and sequences the calls.
 
 import { errorMessage, fileToBase64, worker } from "./api";
-import { type Candidate, commonTarget, selectionCandidates, uniqueName } from "./study";
+import { applyMask, type Candidate, commonTarget, selectionCandidates, uniqueName } from "./study";
 import type {
   CheckEntry,
   CompareResponse,
@@ -18,7 +18,24 @@ import type {
   StudyResponse,
 } from "./types";
 
-export type View = "data" | "consistency" | "fit" | "study" | "results" | "calculator";
+export type View =
+  | "data"
+  | "consistency"
+  | "deviations"
+  | "fit"
+  | "fitting"
+  | "study"
+  | "results"
+  | "worksheet"
+  | "graph"
+  | "calculator"
+  | "code"
+  | "surface"
+  | "experiment"
+  | "setup"
+  | "cad";
+
+export type Dialog = "import" | "wizard" | "settings" | "components" | "addons" | "about" | null;
 
 export interface LogLine {
   time: string;
@@ -74,6 +91,24 @@ class Project {
   view = $state<View>("data");
   selected = $state<Selected>(null);
   importOpen = $state(false);
+  dialog = $state<Dialog>(null);
+  /** Point ids excluded from fits, validation and consistency (kept and shown in the worksheet). */
+  masks = $state<Record<string, number[]>>({});
+  /** Dataset shown in the worksheet tab. */
+  worksheet = $state<string | null>(null);
+  stopRequested = $state(false);
+  /** Document tabs of the work area, in order (fixed ones first, then tabs opened from the menus). */
+  tabs = $state<View[]>(["data", "consistency", "deviations", "fit", "fitting", "study", "results"]);
+
+  open(view: View) {
+    if (!this.tabs.includes(view)) this.tabs.push(view);
+    this.view = view;
+  }
+
+  closeTab(view: View) {
+    this.tabs = this.tabs.filter((v) => v !== view);
+    if (this.view === view) this.view = this.tabs[this.tabs.length - 1] ?? "data";
+  }
   consistency = $state<ConsistencyResponse | null>(null);
   comparison = $state<CompareResponse | null>(null);
   consistencySettings = $state({ tTol: 1.0, references: true });
@@ -95,6 +130,35 @@ class Project {
     } finally {
       this.busy = null;
     }
+  }
+
+  /** Datasets without their masked points: what fits, validation and consistency use. */
+  activeDatasets(): Dataset[] {
+    return this.datasets.map((d) => applyMask(d, this.masks[d.name] ?? [])).filter((d) => d.values.length > 0);
+  }
+
+  setMask(name: string, ids: number[], masked: boolean) {
+    const current = new Set(this.masks[name] ?? []);
+    for (const id of ids) {
+      if (masked) current.add(id);
+      else current.delete(id);
+    }
+    this.masks[name] = [...current].sort((a, b) => a - b);
+    this.invalidateResults();
+    this.note(`${name}: ${ids.length} point${ids.length === 1 ? "" : "s"} ${masked ? "masked" : "unmasked"} (${current.size} masked)`);
+  }
+
+  openWorksheet(name: string) {
+    this.worksheet = name;
+    this.selected = { type: "dataset", name };
+    this.open("worksheet");
+  }
+
+  /** Ask a running sequence (fit all, study) to stop after the current step. */
+  stop() {
+    if (!this.busy) return;
+    this.stopRequested = true;
+    this.note("Stop requested: the sequence stops after the current step", "warn");
   }
 
   // --- data ---
@@ -138,6 +202,7 @@ class Project {
   removeDataset(name: string) {
     this.datasets = this.datasets.filter((d) => d.name !== name);
     delete this.checks[name];
+    delete this.masks[name];
     this.invalidateResults();
     this.note(`Removed ${name}`);
   }
@@ -215,7 +280,7 @@ class Project {
     const c = this.candidate(id);
     if (!c) return;
     const result = await this.run(`Fit ${c.label}`, () =>
-      worker<FitResponse>("model.fit", { model: c.start, datasets: this.datasets, options: this.fitOptions(c) }),
+      worker<FitResponse>("model.fit", { model: c.start, datasets: this.activeDatasets(), options: this.fitOptions(c) }),
     );
     const target = this.candidate(id);
     if (!target) return;
@@ -233,7 +298,12 @@ class Project {
   }
 
   async fitAll() {
-    for (const c of [...this.candidates]) await this.fit(c.id);
+    this.stopRequested = false;
+    for (const c of [...this.candidates]) {
+      if (this.stopRequested) break;
+      await this.fit(c.id);
+    }
+    this.stopRequested = false;
   }
 
   // --- validation and selection ---
@@ -245,7 +315,7 @@ class Project {
     const result = await this.run(`Validate ${c.label}`, () =>
       worker<StudyResponse>("study.validate", {
         model: c.start,
-        datasets: this.datasets,
+        datasets: this.activeDatasets(),
         methods: s.methods,
         options: { weighted: s.weighted, scale_factors: s.scaleFactors, multistart: s.multistart, fixed: c.fixed },
         k: s.k,
@@ -290,9 +360,17 @@ class Project {
   async runStudy() {
     if (!this.locked) await this.lockRule();
     if (!this.locked) return;
+    this.stopRequested = false;
     for (const c of [...this.candidates]) {
+      if (this.stopRequested) break;
       await this.fit(c.id);
+      if (this.stopRequested) break;
       await this.validate(c.id);
+    }
+    if (this.stopRequested) {
+      this.stopRequested = false;
+      this.note("Study stopped by the user", "warn");
+      return;
     }
     await this.select();
   }
@@ -326,7 +404,7 @@ class Project {
     if (this.datasets.length === 0) return;
     const result = await this.run("Consistency", () =>
       worker<ConsistencyResponse>("consistency.analyze", {
-        datasets: this.datasets,
+        datasets: this.activeDatasets(),
         models: this.fittedModels(),
         include_references: this.consistencySettings.references,
         t_tol: this.consistencySettings.tTol,
@@ -345,7 +423,7 @@ class Project {
     if (this.datasets.length === 0) return;
     const result = await this.run("Comparison", () =>
       worker<CompareResponse>("model.compare", {
-        datasets: this.datasets,
+        datasets: this.activeDatasets(),
         models: this.fittedModels(),
         include_references: true,
       }),

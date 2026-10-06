@@ -35,10 +35,13 @@
         aria-selected={project.selected?.type === "dataset" && project.selected.name === d.name}
         onclick={() => {
           project.selected = { type: "dataset", name: d.name };
-          project.view = "data";
+          if (project.view === "worksheet") project.openWorksheet(d.name);
         }}
+        ondblclick={() => project.openWorksheet(d.name)}
+        title="Double-click to open the worksheet"
       >
-        <span class="icon">▦</span><span class="name">{d.name}</span><span class="count">{d.values.length}</span>
+        <span class="icon">▦</span><span class="name">{d.name}</span>
+        <span class="count">{#if project.masks[d.name]?.length}<span class="warn">{d.values.length - project.masks[d.name].length}/</span>{/if}{d.values.length}</span>
       </button>
     {:else}
       <div class="leaf muted">(no data — Import)</div>
@@ -60,7 +63,11 @@
         aria-selected={project.selected?.type === "candidate" && project.selected.id === c.id}
         onclick={() => {
           project.selected = { type: "candidate", id: c.id };
-          project.view = "fit";
+          if (!["fit", "fitting", "deviations", "results"].includes(project.view)) project.view = "fit";
+        }}
+        ondblclick={() => {
+          project.selected = { type: "candidate", id: c.id };
+          project.view = "fitting";
         }}
       >
         <span class="icon fn">ƒ</span><span class="name">{c.label}</span>

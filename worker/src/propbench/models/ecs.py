@@ -147,7 +147,7 @@ class ECSViscosity:
     def from_coolprop(cls, fluid: str) -> Self:
         """The ECS viscosity model stored in CoolProp's fluid library (e.g. R236fa, R116: Huber et al. 2003)."""
         name = identify_fluid(fluid)
-        data = json.loads(CP.get_fluid_param_string(name, "JSON"))[0]["TRANSPORT"]["viscosity"]
+        data = json.loads(CP.get_fluid_param_string(name, "JSON"))[0].get("TRANSPORT", {}).get("viscosity")
         if not isinstance(data, dict) or data.get("type") != "ECS":
             raise ModelError(f"CoolProp's viscosity model of {name} is not an ECS model")
         model = cls.create(

@@ -86,6 +86,7 @@ export interface FitResponse {
     weighted: boolean;
   };
   criteria: { aic: number | null; bic: number | null };
+  correlation?: { names: string[]; matrix: (number | null)[][] };
   n_parameters: number;
   points: {
     dataset: string[];
@@ -126,6 +127,7 @@ export interface CrossValidationSummary {
   pooled: Deviations;
   folds: FoldSummary[];
   parameters: Record<string, { mean: number | null; std: number | null }>;
+  points?: { fold: string[]; dataset: string[]; point_id: number[]; ard: (number | null)[] };
 }
 
 export interface PhysicsCheck {
@@ -183,6 +185,7 @@ export interface ImportMapping {
   header_row: number;
   first_data_row?: number | null;
   sheet?: string | null;
+  saturation?: "liquid" | "vapor" | null;
 }
 
 export interface OffsetResult {
@@ -254,5 +257,12 @@ export interface ConsistencyResponse {
 
 export interface CompareResponse {
   models: string[];
-  rows: { model: string; dataset: string; deviations: Deviations; not_evaluated: number }[];
+  rows: {
+    model: string;
+    dataset: string;
+    deviations: Deviations;
+    not_evaluated: number;
+    point_ids: number[] | null;
+    ard: (number | null)[] | null;
+  }[];
 }

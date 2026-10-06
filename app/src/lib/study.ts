@@ -90,3 +90,41 @@ export function typicalUncertainty(datasets: Dataset[]): number | null {
   const mid = Math.floor(rel.length / 2);
   return rel.length % 2 ? rel[mid] : (rel[mid - 1] + rel[mid]) / 2;
 }
+
+/** The dataset without the points whose ids are in ``masked`` (all arrays filtered alike). */
+export function applyMask(d: Dataset, masked: number[]): Dataset {
+  if (masked.length === 0) return d;
+  const drop = new Set(masked);
+  const keep = d.point_ids.flatMap((id, i) => (drop.has(id) ? [] : [i]));
+  const pick = <T>(a: T[] | null): T[] | null => (a ? keep.map((i) => a[i]) : null);
+  return {
+    ...d,
+    temperature: keep.map((i) => d.temperature[i]),
+    values: keep.map((i) => d.values[i]),
+    pressure: pick(d.pressure),
+    molar_density: pick(d.molar_density),
+    expanded_uncertainty: pick(d.expanded_uncertainty),
+    phase: pick(d.phase),
+    point_ids: keep.map((i) => d.point_ids[i]),
+  };
+}
+
+/** Per-point deviations (held-out or of a reference model) as plot series per dataset, x = temperature. */
+export function pointSeries(
+  datasets: Dataset[],
+  names: string[],
+  pointIds: number[],
+  ard: (number | null)[],
+): { name: string; x: number[]; y: (number | null)[] }[] {
+  const temperatureOf = new Map(datasets.map((d) => [d.name, new Map(d.point_ids.map((id, i) => [id, d.temperature[i]]))]));
+  const groups = new Map<string, { x: number[]; y: (number | null)[] }>();
+  names.forEach((name, i) => {
+    const t = temperatureOf.get(name)?.get(pointIds[i]);
+    if (t === undefined) return;
+    const g = groups.get(name) ?? { x: [], y: [] };
+    g.x.push(t);
+    g.y.push(ard[i]);
+    groups.set(name, g);
+  });
+  return [...groups].map(([name, g]) => ({ name, ...g }));
+}
