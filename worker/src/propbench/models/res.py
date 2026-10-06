@@ -31,7 +31,7 @@ import CoolProp.CoolProp as CP  # noqa: N817 - the name CoolProp itself document
 import numpy as np
 from scipy.optimize import least_squares
 
-from propbench.backends.feos import PCSAFT_PARAMETERS, PcSaftParameters
+from propbench.backends.feos import PcSaftParameters, available_parameters
 from propbench.core import Quantity, identify_fluid
 from propbench.models.base import (
     CheckValue,
@@ -105,9 +105,10 @@ def fit_pcsaft_to_eos(fluid: str, n_points: int = 15) -> PcSaftParameters:
 
 
 def pcsaft_parameters(fluid: str) -> PcSaftParameters:
-    """Published PC-SAFT parameters when PropBench has them, otherwise parameters fitted to the reference EoS."""
+    """Published PC-SAFT parameters (bundled or from a component) when available, otherwise parameters fitted to the
+    reference EoS."""
     name = identify_fluid(fluid)
-    return PCSAFT_PARAMETERS.get(name) or fit_pcsaft_to_eos(name)
+    return available_parameters().get(name) or fit_pcsaft_to_eos(name)
 
 
 @dataclass(frozen=True, eq=False)

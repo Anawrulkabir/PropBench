@@ -44,6 +44,27 @@ PCSAFT_PARAMETERS: dict[str, PcSaftParameters] = {
     "n-Butane": PcSaftParameters(2.3316, 3.7086, 222.88, 58.123, _GROSS_SADOWSKI_2001),
 }
 
+
+def available_parameters() -> dict[str, PcSaftParameters]:
+    """``PCSAFT_PARAMETERS`` plus parameters of installed ``parameters`` components (``pcsaft.json``: canonical
+    fluid name → {m, sigma, epsilon_k, molar_mass, reference}); bundled values win on conflicts."""
+    import json
+
+    from propbench import components
+
+    out: dict[str, PcSaftParameters] = {}
+    for path in components.files("parameters", "pcsaft.json"):
+        try:
+            for name, p in json.loads(path.read_text(encoding="utf-8")).items():
+                out[str(name)] = PcSaftParameters(
+                    float(p["m"]), float(p["sigma"]), float(p["epsilon_k"]), float(p["molar_mass"]), str(p["reference"])
+                )
+        except (ValueError, KeyError, TypeError, AttributeError):
+            continue
+    out.update(PCSAFT_PARAMETERS)
+    return out
+
+
 _PAIRS = {"PT_INPUTS", "DmolarT_INPUTS"}
 OUTPUTS = ("T", "P", "Dmolar", "Dmass", "Z", "Smolar_residual")
 
@@ -53,7 +74,7 @@ class FeOsBackend:
 
     def __init__(self, parameters: Mapping[str, PcSaftParameters] | None = None) -> None:
         self.name = "FeOs::PC-SAFT"
-        self._parameters = dict(PCSAFT_PARAMETERS if parameters is None else parameters)
+        self._parameters = dict(available_parameters() if parameters is None else parameters)
         self._eos_cache: dict[str, Any] = {}
 
     @cached_property

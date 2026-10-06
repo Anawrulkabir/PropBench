@@ -164,6 +164,7 @@
       label: "Data",
       items: [
         { label: "Import…", action: () => (project.importOpen = true), disabled: busy },
+        { label: "Published data from components…", action: () => (project.dialog = "components") },
         { label: "Check data", action: () => project.checkData(), disabled: busy || !hasData },
         { label: "Consistency…", action: () => { project.open("consistency"); project.analyzeConsistency(); }, disabled: busy || !hasData },
         { label: "Open worksheet", action: () => project.datasets[0] && project.openWorksheet(project.worksheet ?? project.datasets[0].name), disabled: !hasData },

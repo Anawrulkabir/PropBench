@@ -43,10 +43,20 @@ pub enum Method {
     ModelReferences,
     #[serde(rename = "model.compare")]
     ModelCompare,
+    #[serde(rename = "components.list")]
+    ComponentsList,
+    #[serde(rename = "components.install")]
+    ComponentsInstall,
+    #[serde(rename = "components.install_file")]
+    ComponentsInstallFile,
+    #[serde(rename = "components.remove")]
+    ComponentsRemove,
+    #[serde(rename = "components.datasets")]
+    ComponentsDatasets,
 }
 
 impl Method {
-    pub const ALL: [Method; 15] = [
+    pub const ALL: [Method; 20] = [
         Method::Fluids,
         Method::Properties,
         Method::DatasetPreview,
@@ -62,6 +72,11 @@ impl Method {
         Method::ConsistencyAnalyze,
         Method::ModelReferences,
         Method::ModelCompare,
+        Method::ComponentsList,
+        Method::ComponentsInstall,
+        Method::ComponentsInstallFile,
+        Method::ComponentsRemove,
+        Method::ComponentsDatasets,
     ];
 
     /// The JSON-RPC method name.
@@ -82,6 +97,11 @@ impl Method {
             Method::ConsistencyAnalyze => "consistency.analyze",
             Method::ModelReferences => "model.references",
             Method::ModelCompare => "model.compare",
+            Method::ComponentsList => "components.list",
+            Method::ComponentsInstall => "components.install",
+            Method::ComponentsInstallFile => "components.install_file",
+            Method::ComponentsRemove => "components.remove",
+            Method::ComponentsDatasets => "components.datasets",
         }
     }
 
@@ -95,6 +115,7 @@ impl Method {
             Method::ModelFit => default.max(Duration::from_secs(15 * 60)),
             Method::StudyValidate => default.max(Duration::from_secs(4 * 60 * 60)),
             Method::ConsistencyAnalyze | Method::ModelCompare => default.max(Duration::from_secs(10 * 60)),
+            Method::ComponentsInstall | Method::ComponentsInstallFile => default.max(Duration::from_secs(30 * 60)),
             _ => default,
         }
     }

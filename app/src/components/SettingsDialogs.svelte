@@ -1,9 +1,10 @@
 <script lang="ts">
-  // Settings (mockup 11), Component manager (mockup 04), Add-on manager (mockup 14) and About. Installing components
-  // and add-ons (M1b, M4c), the AI assistant, GitHub and remote compute (M4b) are not built yet: their controls are
+  // Settings (mockup 11), Component manager (mockup 04), Add-on manager (mockup 14) and About. Installing add-ons
+  // (M4c), the AI assistant, GitHub and remote compute (M4b) are not built yet: their controls are
   // shown disabled. Credentials are never stored by the UI (CLAUDE.md: OS keychain only).
   import { project } from "../lib/project.svelte";
   import { applyScale, loadScale, SCALES } from "../lib/scale";
+  import ComponentManager from "./ComponentManager.svelte";
   import DialogFrame from "./DialogFrame.svelte";
 
   const close = () => (project.dialog = null);
@@ -13,30 +14,6 @@
   let section = $state("Environment");
   let scale = $state(loadScale());
   $effect(() => applyScale(scale));
-
-  // --- components (README §2b) ---
-  const COMPONENTS = [
-    { name: "Core and calculator", contents: "Calculator, plots, projects", source: "PropBench", status: "Installed", cat: "Core" },
-    { name: "CoolProp fluid library", contents: "Reference EoS and transport models", source: "CoolProp (MIT)", status: "Installed", cat: "Thermodynamic engines" },
-    { name: "NIST reference transport models", contents: "Published models with check values (NISTIR 8209)", source: "NIST (public domain)", status: "Installed", cat: "Reference transport models" },
-    { name: "FeOs engine", contents: "PC-SAFT, entropy-scaling transport", source: "FeOs (MIT/Apache)", status: "Available", cat: "Thermodynamic engines" },
-    { name: "PC-SAFT parameter sets", contents: "Published pure-component parameters", source: "Published datasets", status: "Available", cat: "Fluid parameter sets" },
-    { name: "ThermoML: viscosity", contents: "Published viscosity measurements", source: "NIST TRC archive", status: "Available", cat: "Experimental data" },
-    { name: "ThermoML: density", contents: "Published density measurements", source: "NIST TRC archive", status: "Available", cat: "Experimental data" },
-    { name: "ThermoML: thermal conductivity", contents: "Published measurements", source: "NIST TRC archive", status: "Available", cat: "Experimental data" },
-    { name: "Mixture toolkit", contents: "Mixing rules, binary parameter fitting", source: "PropBench", status: "Planned (2.0)", cat: "Mixtures" },
-    { name: "REFPROP connector", contents: "Uses your own REFPROP licence", source: "requires licence", status: "Available", cat: "Connectors" },
-    { name: "Pretrained property networks", contents: "ONNX models, optional", source: "Published models", status: "Available", cat: "Machine learning" },
-    { name: "Report templates", contents: "Word, PDF, Markdown", source: "PropBench", status: "Planned (M4)", cat: "Report templates" },
-  ];
-  const CATEGORIES = ["All components", ...new Set(COMPONENTS.map((c) => c.cat))];
-  let category = $state("All components");
-  let search = $state("");
-  let picked = $state(COMPONENTS[0].name);
-  const shownComponents = $derived(
-    COMPONENTS.filter((c) => (category === "All components" || c.cat === category) && c.name.toLowerCase().includes(search.toLowerCase())),
-  );
-  const pickedComponent = $derived(COMPONENTS.find((c) => c.name === picked));
 
   // --- add-ons (README §2f) ---
   const ADDONS = [
@@ -124,48 +101,7 @@
     {/snippet}
   </DialogFrame>
 {:else if project.dialog === "components"}
-  <DialogFrame title="Component Manager" width="1000px" height="620px" onclose={close}>
-    <div class="split">
-      <div class="well list">
-        {#each CATEGORIES as c (c)}<button class="item" class:sel={category === c} onclick={() => (category = c)}>🗀 {c}</button>{/each}
-      </div>
-      <div class="pane">
-        <div class="row"><span>Search:</span><input class="field grow" bind:value={search} /></div>
-        <div class="well">
-          <table class="grid">
-            <thead><tr><th></th><th>Component</th><th>Contents</th><th>Source</th><th>Status</th></tr></thead>
-            <tbody>
-              {#each shownComponents as c (c.name)}
-                <tr class="clickable" class:sel={picked === c.name} onclick={() => (picked = c.name)}>
-                  <td><input type="checkbox" checked={c.status === "Installed"} disabled /></td>
-                  <td>{c.name}</td><td>{c.contents}</td><td>{c.source}</td>
-                  <td class:ok={c.status === "Installed"} class:link={c.status === "Available"}>{c.status}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
-        {#if pickedComponent}
-          <fieldset class="group">
-            <legend>Details: {pickedComponent.name}</legend>
-            <table class="props"><tbody>
-              <tr><td>Contents</td><td>{pickedComponent.contents}</td></tr>
-              <tr><td>Source</td><td>{pickedComponent.source}</td></tr>
-              <tr><td>Checksum</td><td>verified after download (M1b)</td></tr>
-            </tbody></table>
-          </fieldset>
-        {/if}
-      </div>
-    </div>
-    {#snippet footer()}
-      <span class="muted">Source: PropBench registry. Download, checksum verification and offline install: M1b.</span>
-      <span class="spacer"></span>
-      <button class="btn" disabled>Install from file…</button>
-      <button class="btn" disabled>Remove</button>
-      <button class="btn" disabled>Install selected</button>
-      <button class="btn default" onclick={close}>Close</button>
-    {/snippet}
-  </DialogFrame>
+  <ComponentManager />
 {:else if project.dialog === "addons"}
   <DialogFrame title="Add-on Manager" width="1100px" height="620px" onclose={close}>
     <div class="row"><button class="btn">Available ({ADDONS.length})</button><span class="spacer"></span><label class="row"><input type="checkbox" bind:checked={verifiedOnly} /> Verified only</label></div>
@@ -258,9 +194,6 @@
     gap: 5px 8px;
     align-items: center;
     margin-bottom: 6px;
-  }
-  .grow {
-    flex: 1;
   }
   .link {
     color: var(--navy);

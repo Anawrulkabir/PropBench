@@ -20,6 +20,9 @@ const ENV_ALLOWLIST: &[&str] = &[
     "APPDATA",
     "LANG",
     "LC_ALL",
+    // PropBench's own settings: components folder and component registry (README §2b).
+    "PB_COMPONENTS_DIR",
+    "PB_REGISTRY_URL",
 ];
 
 /// How to start a worker process.
@@ -52,6 +55,16 @@ impl WorkerCommand {
             args: args.into_iter().map(Into::into).collect(),
             env,
         }
+    }
+}
+
+impl WorkerCommand {
+    /// The same command with one more (or a replaced) environment variable.
+    pub fn with_env(mut self, key: impl Into<OsString>, value: impl Into<OsString>) -> Self {
+        let key = key.into();
+        self.env.retain(|(k, _)| *k != key);
+        self.env.push((key, value.into()));
+        self
     }
 }
 

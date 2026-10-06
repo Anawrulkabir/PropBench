@@ -451,7 +451,79 @@ def model_compare(
     return jsonable({"models": list(named), "rows": [r.as_dict() for r in rows]})
 
 
+# --- components (README §2b) ---
+
+DEFAULT_REGISTRY = "https://propbench.github.io/components/registry.json"
+
+
+def _registry_location(registry: str | None) -> str:
+    import os
+
+    return registry or os.environ.get("PB_REGISTRY_URL") or DEFAULT_REGISTRY
+
+
+def components_list(registry: str | None = None) -> dict[str, Any]:
+    """Installed components, the registry's components and available updates. A registry that cannot be read is
+    reported in ``registry_error`` (offline use keeps working)."""
+    from propbench import components
+
+    installed = components.installed()
+    try:
+        available = components.load_registry(_registry_location(registry))
+        error = None
+    except components.ComponentError as exc:
+        available, error = [], str(exc)
+    return {
+        "registry": _registry_location(registry),
+        "registry_error": error,
+        "installed": [c.to_dict() for c in installed.values()],
+        "available": [c.to_dict() for c in available],
+        "updates": [c.to_dict() for c in components.updates(available)],
+    }
+
+
+def components_install(id: str, registry: str | None = None) -> dict[str, Any]:
+    """Download, verify (size, SHA-256) and install a component and what it requires."""
+    from propbench import components
+
+    done = components.install(id, components.load_registry(_registry_location(registry)))
+    return {"installed": [c.to_dict() for c in done]}
+
+
+def components_install_file(content_base64: str) -> dict[str, Any]:
+    """Offline installation from a component archive."""
+    from propbench import components
+
+    c = components.install_file(components.decode_base64(content_base64))
+    return {"installed": [c.to_dict()]}
+
+
+def components_remove(id: str) -> dict[str, Any]:
+    from propbench import components
+
+    components.remove(id)
+    return {"removed": id}
+
+
+def components_datasets() -> dict[str, Any]:
+    """Published datasets of installed ``data`` components (each with its DOI and citation)."""
+    import json as _json
+
+    from propbench import components
+
+    out = []
+    for path in components.files("data", "datasets.json"):
+        for d in _json.loads(path.read_text(encoding="utf-8")).get("datasets", []):
+            out.append(Dataset.from_dict(dict(d)).to_dict())
+    return jsonable({"datasets": out})
+
+
 __all__ = [
+    "components_datasets",
+    "components_install",
+    "components_install_file",
+    "components_list",
+    "components_remove",
     "consistency_analyze",
     "dataset_check",
     "dataset_import",

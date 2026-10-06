@@ -43,6 +43,11 @@ METHODS: dict[str, Callable[..., dict[str, Any]]] = {
     "consistency.analyze": api.consistency_analyze,
     "model.references": api.model_references,
     "model.compare": api.model_compare,
+    "components.list": api.components_list,
+    "components.install": api.components_install,
+    "components.install_file": api.components_install_file,
+    "components.remove": api.components_remove,
+    "components.datasets": api.components_datasets,
 }
 
 PARSE_ERROR = -32700
@@ -203,5 +208,8 @@ def main() -> int:
     os.dup2(2, 1)
     sys.stdout = sys.stderr
     instream = open(sys.stdin.fileno(), encoding="utf-8", newline="\n", closefd=False)  # noqa: SIM115
+    from propbench import components
+
+    components.activate_python()  # pure-Python components installed in the app data folder
     Server().serve(instream, protocol_out)
     return 0

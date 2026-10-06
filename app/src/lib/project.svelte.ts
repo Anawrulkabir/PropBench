@@ -454,6 +454,24 @@ class Project {
     });
   }
 
+  /** Add datasets (e.g. published data from a component) under unique names, then check them. */
+  async addDatasets(datasets: Dataset[], origin: string): Promise<number> {
+    const fresh = datasets.filter((d) => !this.datasets.some((x) => x.name === d.name));
+    if (!fresh.length) return 0;
+    this.checkpoint(`add ${fresh.length} datasets`);
+    const names = this.datasets.map((d) => d.name);
+    for (const d of fresh) {
+      d.name = uniqueName(names, d.name);
+      names.push(d.name);
+      this.datasets.push(d);
+      this.audit("import", `${d.name}: ${d.values.length} points from ${origin}`);
+    }
+    if (this.name === "Untitled project" && fresh[0]) this.name = `${fresh[0].fluid} ${fresh[0].quantity}`;
+    this.invalidateResults();
+    await this.checkData();
+    return fresh.length;
+  }
+
   removeDataset(name: string) {
     this.checkpoint(`remove ${name}`);
     this.datasets = this.datasets.filter((d) => d.name !== name);

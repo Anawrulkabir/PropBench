@@ -152,12 +152,44 @@ def load_registry(text: str | None = None) -> list[ReferenceEntry]:
     return entries
 
 
+def passes_check_values(entry: ReferenceEntry) -> bool:
+    """True when the entry's model reproduces every one of its published check values."""
+    try:
+        model = entry.model()
+        for c in entry.check_values:
+            value = float(model.predict([c.temperature], [c.molar_density])[0])
+            if not abs(value - c.expected) <= c.rel_tol * abs(c.expected):
+                return False
+    except (ModelError, ValueError, KeyError):
+        return False
+    return True
+
+
+def all_entries() -> list[ReferenceEntry]:
+    """Bundled entries, then entries of installed ``reference-models`` components that pass their check values
+    (an entry that does not reproduce its published values is never offered)."""
+    from propbench import components
+
+    entries = load_registry()
+    seen = {e.id for e in entries}
+    for path in components.files("reference-models", "reference_models.json"):
+        try:
+            extra = load_registry(path.read_text(encoding="utf-8"))
+        except (ModelError, ValueError):
+            continue
+        for e in extra:
+            if e.id not in seen and passes_check_values(e):
+                entries.append(e)
+                seen.add(e.id)
+    return entries
+
+
 def reference_models(fluid: str, quantity: Quantity | str) -> list[tuple[str, Model, str]]:
     """(label, model, citation) of every reference model available for ``fluid`` and ``quantity``."""
     name = identify_fluid(fluid)
     q = Quantity(quantity)
     out: list[tuple[str, Model, str]] = []
-    for entry in load_registry():
+    for entry in all_entries():
         if entry.fluid == name and entry.quantity is q:
             out.append((entry.label, entry.model(), entry.citation))
     if q in _OUTPUT:

@@ -299,3 +299,55 @@ fn project_files_are_shared_with_the_python_package() {
     assert_eq!(info["meta"]["name"], "made in Python");
     assert_eq!(info["datasets"][0]["fluid"], "R13I1");
 }
+
+#[test]
+fn components_install_offline_list_and_remove() {
+    let python = pb_engine::resolve_worker_python(None).expect("worker Python: run `uv sync --project worker`");
+    let dir = std::env::temp_dir().join(format!("pb-cli-components-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(
+        dir.join("src").join("component.json"),
+        r#"{"id": "demo-data", "name": "Demo data", "version": "1.0", "kind": "data"}"#,
+    )
+    .unwrap();
+    std::fs::write(dir.join("src").join("datasets.json"), r#"{"datasets": []}"#).unwrap();
+    let archive = dir.join("demo-data-1.0.zip");
+    let script = format!(
+        "from propbench import components\ncomponents.build_archive({:?}, {:?})\n",
+        dir.join("src").to_str().unwrap(),
+        archive.to_str().unwrap()
+    );
+    assert!(
+        Command::new(python)
+            .args(["-I", "-c", &script])
+            .status()
+            .unwrap()
+            .success()
+    );
+    let root = dir.join("appdata");
+    let root = root.to_str().unwrap();
+    let run = |args: &[&str]| {
+        let mut all = vec!["--components-dir", root];
+        all.extend_from_slice(args);
+        let out = propbench(&all);
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap()
+    };
+    let installed = run(&["components", "install-file", archive.to_str().unwrap()]);
+    assert_eq!(installed["installed"][0]["id"], "demo-data");
+    let missing_registry = dir.join("none.json");
+    let listing = run(&["components", "list", "--registry", missing_registry.to_str().unwrap()]);
+    assert_eq!(listing["installed"][0]["version"], "1.0");
+    assert!(
+        listing["registry_error"].is_string(),
+        "offline: the registry error is reported, not fatal"
+    );
+    run(&["components", "remove", "demo-data"]);
+    let listing = run(&["components", "list", "--registry", missing_registry.to_str().unwrap()]);
+    assert_eq!(listing["installed"], serde_json::json!([]));
+}

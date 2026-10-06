@@ -17,6 +17,9 @@ struct Cli {
     /// Python interpreter that runs the worker (default: $PB_WORKER_PYTHON, then the development environment).
     #[arg(long, global = true)]
     python: Option<PathBuf>,
+    /// Folder of installed components (default: $PB_COMPONENTS_DIR).
+    #[arg(long, global = true)]
+    components_dir: Option<PathBuf>,
     /// Write the JSON result to this file instead of standard output.
     #[arg(long, short, global = true)]
     output_file: Option<PathBuf>,
@@ -129,6 +132,11 @@ enum Command {
         #[arg(long)]
         no_references: bool,
     },
+    /// Components: list (registry and installed), install by id or from an archive file, remove.
+    Components {
+        #[command(subcommand)]
+        action: ComponentsAction,
+    },
     /// Project files (.pbp): create, inspect, add datasets, snapshot, export to and import from JSON.
     Project {
         #[command(subcommand)]
@@ -139,6 +147,29 @@ enum Command {
         method: String,
         #[arg(default_value = "{}")]
         params: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum ComponentsAction {
+    /// Installed components, the registry's components and updates.
+    List {
+        /// Registry URL or path (default: $PB_REGISTRY_URL, then the PropBench registry).
+        #[arg(long)]
+        registry: Option<String>,
+    },
+    /// Download, verify and install a component (and what it requires).
+    Install {
+        id: String,
+        #[arg(long)]
+        registry: Option<String>,
+    },
+    /// Install a component archive without network (offline installer).
+    InstallFile {
+        archive: PathBuf,
+    },
+    Remove {
+        id: String,
     },
 }
 
@@ -249,6 +280,24 @@ fn project_action(action: ProjectAction) -> Result<Value, EngineError> {
     }
 }
 
+/// Standard base64 (RFC 4648) of `bytes`, to send a file to the worker inside JSON.
+fn base64(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(char::from(TABLE[((n >> (18 - 6 * i)) & 63) as usize]));
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
+
 fn invalid(message: impl Into<String>) -> EngineError {
     EngineError::Rpc {
         code: EngineError::INVALID_PARAMS,
@@ -328,7 +377,11 @@ async fn run(cli: Cli) -> Result<String, EngineError> {
                 Some(path) => path,
                 None => resolve_worker_python(None)?,
             };
-            let engine = Engine::new(EngineConfig::new(WorkerCommand::python_worker(python)));
+            let mut worker = WorkerCommand::python_worker(python);
+            if let Some(dir) = cli.components_dir {
+                worker = worker.with_env("PB_COMPONENTS_DIR", dir);
+            }
+            let engine = Engine::new(EngineConfig::new(worker));
             let result = execute(&engine, command).await;
             engine.shutdown().await;
             result
@@ -434,6 +487,20 @@ async fn execute(engine: &Engine, command: Command) -> Result<Value, EngineError
             (Method::ModelCompare, params)
         }
         Command::Project { action } => return project_action(action),
+        Command::Components { action } => match action {
+            ComponentsAction::List { registry } => (Method::ComponentsList, json!({ "registry": registry })),
+            ComponentsAction::Install { id, registry } => {
+                (Method::ComponentsInstall, json!({ "id": id, "registry": registry }))
+            }
+            ComponentsAction::InstallFile { archive } => {
+                let bytes = std::fs::read(&archive)?;
+                (
+                    Method::ComponentsInstallFile,
+                    json!({ "content_base64": base64(&bytes) }),
+                )
+            }
+            ComponentsAction::Remove { id } => (Method::ComponentsRemove, json!({ "id": id })),
+        },
         Command::Call { method, params } => {
             let method = Method::from_name(&method).ok_or_else(|| {
                 let known: Vec<&str> = Method::ALL.iter().map(|m| m.name()).collect();
@@ -443,4 +510,24 @@ async fn execute(engine: &Engine, command: Command) -> Result<Value, EngineError
         }
     };
     engine.invoke(method, params).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::base64;
+
+    #[test]
+    fn base64_matches_rfc_4648_vectors() {
+        let cases = [
+            ("", ""),
+            ("f", "Zg=="),
+            ("fo", "Zm8="),
+            ("foo", "Zm9v"),
+            ("foobar", "Zm9vYmFy"),
+        ];
+        for (plain, encoded) in cases {
+            assert_eq!(base64(plain.as_bytes()), encoded);
+        }
+        assert_eq!(base64(&[0xff, 0xfe, 0x00]), "//4A");
+    }
 }
