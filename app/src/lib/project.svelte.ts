@@ -47,9 +47,11 @@ export type View =
   | "surface"
   | "experiment"
   | "setup"
-  | "cad";
+  | "cad"
+  | "curvefit"
+  | "uncertainty";
 
-export type Dialog = "import" | "wizard" | "settings" | "components" | "addons" | "about" | null;
+export type Dialog = "import" | "wizard" | "settings" | "components" | "addons" | "about" | "references" | null;
 
 export interface LogLine {
   time: string;
@@ -169,6 +171,8 @@ class Project {
   }
   scripts = $state<Record<string, string>>({ "analysis.py": DEFAULT_SCRIPT });
   environment = $state<{ packages: string[]; lock: string }>({ packages: [], lock: "" });
+  worksheets = $state<SavedState["worksheets"]>({});
+  tools = $state<SavedState["tools"]>({ curvefits: [], budgets: [], references: [] });
   consistency = $state<ConsistencyResponse | null>(null);
   comparison = $state<CompareResponse | null>(null);
   consistencySettings = $state({ tTol: 1.0, references: true });
@@ -248,6 +252,8 @@ class Project {
       consistencySettings: this.consistencySettings,
       scripts: this.scripts,
       environment: this.environment,
+      worksheets: this.worksheets,
+      tools: this.tools,
     };
   }
 
@@ -267,6 +273,8 @@ class Project {
       consistencySettings: { tTol: 1.0, references: true },
       scripts: { "analysis.py": DEFAULT_SCRIPT },
       environment: { packages: [], lock: "" },
+      worksheets: {},
+      tools: { curvefits: [], budgets: [], references: [] },
     };
   }
 
@@ -285,6 +293,8 @@ class Project {
     this.consistencySettings = state.consistencySettings as { tTol: number; references: boolean };
     this.scripts = state.scripts ?? { "analysis.py": DEFAULT_SCRIPT };
     this.environment = state.environment ?? { packages: [], lock: "" };
+    this.worksheets = state.worksheets ?? {};
+    this.tools = state.tools ?? { curvefits: [], budgets: [], references: [] };
     this.selected = null;
     this.worksheet = null;
   }

@@ -78,6 +78,8 @@ impl Method {
                 | Method::ModelCompare
                 | Method::DatasetCheck
                 | Method::ModelPredict
+                | Method::CurveFit
+                | Method::GumMonteCarlo
         )
     }
 }

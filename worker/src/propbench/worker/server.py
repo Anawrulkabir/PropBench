@@ -53,6 +53,14 @@ METHODS: dict[str, Callable[..., dict[str, Any]]] = {
     "env.install": api.env_install,
     "env.sync": api.env_sync,
     "env.run": api.env_run,
+    "worksheet.compute": api.worksheet_compute,
+    "curvefit.fit": api.curvefit_fit,
+    "curvefit.ftest": api.curvefit_ftest,
+    "gum.linear": api.gum_linear,
+    "gum.montecarlo": api.gum_montecarlo,
+    "refs.parse": api.refs_parse,
+    "refs.format": api.refs_format,
+    "refs.doi": api.refs_doi,
 }
 
 PARSE_ERROR = -32700

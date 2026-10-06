@@ -24,6 +24,9 @@
   import ExperimentView from "./components/ExperimentView.svelte";
   import FutureViews from "./components/FutureViews.svelte";
   import CodeView from "./components/CodeView.svelte";
+  import CurveFitView from "./components/CurveFitView.svelte";
+  import UncertaintyView from "./components/UncertaintyView.svelte";
+  import ReferencesDialog from "./components/ReferencesDialog.svelte";
   import { applyScale, loadScale } from "./lib/scale";
   import type { MenuItem } from "./lib/menu";
   import { project, type View } from "./lib/project.svelte";
@@ -44,6 +47,8 @@
     experiment: "Experiment planner",
     setup: "Setup builder",
     cad: "CAD & simulation",
+    curvefit: "Curve fit",
+    uncertainty: "Uncertainty budget",
   };
   const FIXED = new Set<View>(["data", "consistency", "deviations", "fit", "fitting", "study", "results"]);
 
@@ -196,6 +201,9 @@
       items: [
         { label: "Property calculator", action: () => project.open("calculator") },
         { label: "Graph studio", action: () => project.open("graph") },
+        { label: "General curve fit", action: () => project.open("curvefit") },
+        { label: "Uncertainty budget (GUM)", action: () => project.open("uncertainty") },
+        { label: "References…", action: () => (project.dialog = "references") },
         { label: "Code and terminal", action: () => project.open("code") },
         { separator: true, label: "" },
         { label: "3D surface", action: () => project.open("surface") },
@@ -315,6 +323,8 @@
         {:else if project.view === "surface"}<SurfaceView />
         {:else if project.view === "experiment"}<ExperimentView />
         {:else if project.view === "code"}<CodeView />
+        {:else if project.view === "curvefit"}<CurveFitView />
+        {:else if project.view === "uncertainty"}<UncertaintyView />
         {:else if project.view === "setup" || project.view === "cad"}<FutureViews view={project.view} />
         {:else}
           <PlannedView title={LABELS[project.view]} milestone="see the roadmap" description="This screen is being built." />
@@ -341,6 +351,7 @@
 
 {#if project.importOpen}<ImportDialog />{/if}
 {#if project.dialog === "wizard"}<WizardDialog />
+{:else if project.dialog === "references"}<ReferencesDialog />
 {:else if project.dialog && project.dialog !== "import"}<SettingsDialogs />{/if}
 
 <style>

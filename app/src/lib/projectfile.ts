@@ -57,6 +57,10 @@ export interface SavedState {
   scripts: Record<string, string>;
   /** Project environment: packages asked for and the lock of exactly installed versions. */
   environment: { packages: string[]; lock: string };
+  /** Worksheet formula columns and row filter per dataset. */
+  worksheets: Record<string, { formulas: { name: string; formula: string; unit: string }[]; filter: string }>;
+  /** Curve fits, uncertainty budgets and references of the project. */
+  tools: { curvefits: unknown[]; budgets: unknown[]; references: unknown[] };
 }
 
 /** Document keys in the file; documents not listed here (written by newer versions) are kept as they are. */
@@ -73,6 +77,8 @@ export const DOCUMENT_KEYS = [
   "consistencySettings",
   "scripts",
   "environment",
+  "worksheets",
+  "tools",
 ] as const;
 
 export function nowSeconds(): number {
@@ -122,6 +128,8 @@ export function fromContent(content: ProjectContent, defaults: SavedState): Save
     consistencySettings: doc("consistencySettings"),
     scripts: doc("scripts"),
     environment: doc("environment"),
+    worksheets: doc("worksheets"),
+    tools: doc("tools"),
   };
 }
 

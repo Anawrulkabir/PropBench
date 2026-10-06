@@ -79,7 +79,15 @@ export type WorkerMethod =
   | "env.create"
   | "env.install"
   | "env.sync"
-  | "env.run";
+  | "env.run"
+  | "worksheet.compute"
+  | "curvefit.fit"
+  | "curvefit.ftest"
+  | "gum.linear"
+  | "gum.montecarlo"
+  | "refs.parse"
+  | "refs.format"
+  | "refs.doi";
 
 /** Run one worker operation through the `worker` Tauri command → pb-engine → Python worker. */
 export function worker<T>(method: WorkerMethod, params: object = {}): Promise<T> {

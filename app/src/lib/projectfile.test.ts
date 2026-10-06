@@ -44,6 +44,8 @@ function state(): SavedState {
     consistencySettings: { tTol: 1, references: true },
     scripts: { "fit.py": "print(1)\n" },
     environment: { packages: [], lock: "" },
+    worksheets: {},
+    tools: { curvefits: [], budgets: [], references: [] },
   };
 }
 

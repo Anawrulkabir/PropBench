@@ -519,6 +519,147 @@ def components_datasets() -> dict[str, Any]:
     return jsonable({"datasets": out})
 
 
+# --- worksheets, curve fitting, uncertainty, references (M3a) ---
+
+
+def worksheet_compute(
+    dataset: Mapping[str, Any],
+    formulas: Sequence[Mapping[str, str]] = (),
+    filter: str | None = None,
+    masked: Sequence[int] = (),
+) -> dict[str, Any]:
+    """Formula columns, the row filter and column statistics of one dataset (README §2e.1)."""
+    from propbench import worksheet
+
+    ds = Dataset.from_dict(dict(dataset))
+    return jsonable(worksheet.compute(ds, formulas, filter, masked))
+
+
+def _series(spec: Mapping[str, Any]) -> Any:
+    from propbench import curvefit, worksheet
+
+    ds = Dataset.from_dict(dict(spec["dataset"]))
+    cols = worksheet.dataset_columns(ds)
+    cols.update(worksheet.compute(ds, spec.get("formulas", ()))["columns"])
+    keep = ~np.isin(np.asarray(ds.point_ids), np.asarray(list(spec.get("masked", ())), dtype=int))
+    cols = {k: np.asarray(v)[keep] for k, v in cols.items()}
+    return curvefit.series_from_columns(
+        ds.name, cols, list(spec.get("x", ["T"])), spec.get("y", "y"), spec.get("sigma")
+    )
+
+
+def curvefit_fit(
+    equation: str,
+    series: Sequence[Mapping[str, Any]],
+    parameters: Mapping[str, Mapping[str, Any]],
+    local: Sequence[str] = (),
+    scale_factors: bool = False,
+    weighted: bool = True,
+    multistart: int = 0,
+    seed: int = 0,
+) -> dict[str, Any]:
+    """General curve fit of a user equation to one or more datasets (shared and per-dataset parameters)."""
+    from propbench import curvefit
+
+    def number(v: Any, default: float) -> float:
+        return default if v is None else float(v)
+
+    specs = {
+        name: curvefit.ParameterSpec(
+            float(p["value"]), number(p.get("lower"), -math.inf), number(p.get("upper"), math.inf), bool(p.get("fixed"))
+        )
+        for name, p in parameters.items()
+    }
+    result = curvefit.fit(
+        equation,
+        [_series(s) for s in series],
+        specs,
+        local=list(local),
+        scale_factors=scale_factors,
+        weighted=weighted,
+        multistart=int(multistart),
+        seed=int(seed),
+    )
+    return jsonable(result.as_dict())
+
+
+def curvefit_ftest(simple: Mapping[str, Any], full: Mapping[str, Any]) -> dict[str, Any]:
+    """F-test of two nested curve fits (results of curvefit.fit on the same data)."""
+    from propbench import curvefit
+
+    def as_fit(d: Mapping[str, Any]) -> Any:
+        return curvefit.CurveFit(**{k: d[k] for k in curvefit.CurveFit.__dataclass_fields__ if k in d})
+
+    return curvefit.f_test(as_fit(simple), as_fit(full))
+
+
+def _gum_inputs(inputs: Sequence[Mapping[str, Any]]) -> list[Any]:
+    from propbench import gum
+
+    return [
+        gum.Input(
+            str(i["name"]),
+            float(i["value"]),
+            float(i["u"]),
+            math.inf if i.get("dof") in (None, "", "inf") else float(i["dof"]),
+            str(i.get("distribution", "normal")),
+        )
+        for i in inputs
+    ]
+
+
+def _correlations(items: Sequence[Mapping[str, Any]] | None) -> dict[tuple[str, str], float]:
+    return {(str(c["a"]), str(c["b"])): float(c["r"]) for c in items or ()}
+
+
+def gum_linear(
+    model: str,
+    inputs: Sequence[Mapping[str, Any]],
+    correlations: Sequence[Mapping[str, Any]] | None = None,
+    p: float = 0.9545,
+) -> dict[str, Any]:
+    """GUM uncertainty budget (JCGM 100): sensitivities, contributions, ν_eff, k and U."""
+    from propbench import gum
+
+    return jsonable(gum.linear(model, _gum_inputs(inputs), _correlations(correlations), p))
+
+
+def gum_montecarlo(
+    model: str,
+    inputs: Sequence[Mapping[str, Any]],
+    correlations: Sequence[Mapping[str, Any]] | None = None,
+    p: float = 0.9545,
+    draws: int = 200_000,
+    seed: int = 0,
+) -> dict[str, Any]:
+    """Monte Carlo propagation (JCGM 101) with a seeded generator."""
+    from propbench import gum
+
+    draws = max(1_000, min(int(draws), 5_000_000))
+    return jsonable(gum.monte_carlo(model, _gum_inputs(inputs), _correlations(correlations), p, draws, int(seed)))
+
+
+def refs_parse(bibtex: str) -> dict[str, Any]:
+    from propbench import refs
+
+    entries = refs.parse_bibtex(bibtex)
+    return {"references": [{**e, "citation": refs.citation(e)} for e in entries]}
+
+
+def refs_format(references: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    from propbench import refs
+
+    return {"bibtex": refs.to_bibtex(list(references)), "citations": [refs.citation(r) for r in references]}
+
+
+def refs_doi(doi: str) -> dict[str, Any]:
+    """Look a DOI up at Crossref (network)."""
+    from propbench import refs
+
+    ref = refs.lookup_doi(doi)
+    return {"reference": {**ref, "citation": refs.citation(ref)}}
+
+
 # --- project environments (M1c) ---
 
 
@@ -587,6 +728,8 @@ __all__ = [
     "components_list",
     "components_remove",
     "consistency_analyze",
+    "curvefit_fit",
+    "curvefit_ftest",
     "dataset_check",
     "dataset_import",
     "dataset_preview",
@@ -596,6 +739,8 @@ __all__ = [
     "env_status",
     "env_sync",
     "fluids",
+    "gum_linear",
+    "gum_montecarlo",
     "jsonable",
     "model_compare",
     "model_default",
@@ -604,7 +749,11 @@ __all__ = [
     "model_predict",
     "model_references",
     "properties",
+    "refs_doi",
+    "refs_format",
+    "refs_parse",
     "selection_lock",
     "selection_select",
     "study_validate",
+    "worksheet_compute",
 ]

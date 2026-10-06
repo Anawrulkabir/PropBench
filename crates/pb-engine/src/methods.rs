@@ -63,10 +63,26 @@ pub enum Method {
     EnvSync,
     #[serde(rename = "env.run")]
     EnvRun,
+    #[serde(rename = "worksheet.compute")]
+    WorksheetCompute,
+    #[serde(rename = "curvefit.fit")]
+    CurveFit,
+    #[serde(rename = "curvefit.ftest")]
+    CurveFitFTest,
+    #[serde(rename = "gum.linear")]
+    GumLinear,
+    #[serde(rename = "gum.montecarlo")]
+    GumMonteCarlo,
+    #[serde(rename = "refs.parse")]
+    RefsParse,
+    #[serde(rename = "refs.format")]
+    RefsFormat,
+    #[serde(rename = "refs.doi")]
+    RefsDoi,
 }
 
 impl Method {
-    pub const ALL: [Method; 25] = [
+    pub const ALL: [Method; 33] = [
         Method::Fluids,
         Method::Properties,
         Method::DatasetPreview,
@@ -92,6 +108,14 @@ impl Method {
         Method::EnvInstall,
         Method::EnvSync,
         Method::EnvRun,
+        Method::WorksheetCompute,
+        Method::CurveFit,
+        Method::CurveFitFTest,
+        Method::GumLinear,
+        Method::GumMonteCarlo,
+        Method::RefsParse,
+        Method::RefsFormat,
+        Method::RefsDoi,
     ];
 
     /// The JSON-RPC method name.
@@ -122,6 +146,14 @@ impl Method {
             Method::EnvInstall => "env.install",
             Method::EnvSync => "env.sync",
             Method::EnvRun => "env.run",
+            Method::WorksheetCompute => "worksheet.compute",
+            Method::CurveFit => "curvefit.fit",
+            Method::CurveFitFTest => "curvefit.ftest",
+            Method::GumLinear => "gum.linear",
+            Method::GumMonteCarlo => "gum.montecarlo",
+            Method::RefsParse => "refs.parse",
+            Method::RefsFormat => "refs.format",
+            Method::RefsDoi => "refs.doi",
         }
     }
 
@@ -137,6 +169,7 @@ impl Method {
             Method::ConsistencyAnalyze | Method::ModelCompare => default.max(Duration::from_secs(10 * 60)),
             Method::ComponentsInstall | Method::ComponentsInstallFile => default.max(Duration::from_secs(30 * 60)),
             Method::EnvCreate | Method::EnvInstall | Method::EnvSync => default.max(Duration::from_secs(30 * 60)),
+            Method::CurveFit | Method::GumMonteCarlo => default.max(Duration::from_secs(15 * 60)),
             // the script's own time limit (at most a day) applies inside the worker
             Method::EnvRun => default.max(Duration::from_secs(24 * 60 * 60)),
             _ => default,

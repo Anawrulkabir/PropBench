@@ -49,7 +49,7 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RUF", "PT"]
 # Greek letters are the physical symbols (ρ density, σ surface tension, µ micro).
-allowed-confusables = ["ρ", "σ", "µ", "μ", "∗", "·", "ν", "γ", "×"]
+allowed-confusables = ["ρ", "σ", "µ", "μ", "∗", "·", "ν", "γ", "×", "–", "−"]
 
 [tool.ruff.format]
 quote-style = "double"
