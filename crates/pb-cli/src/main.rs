@@ -84,7 +84,7 @@ enum Command {
         #[arg(long)]
         options: Option<String>,
     },
-    /// Cross-validate a model (loso, loto, kfold, bootstrap) and run the physics checks.
+    /// Cross-validate a model (lostate = leave one state out, loso = leave one source out, loto, kfold, bootstrap) and run the physics checks.
     Validate {
         #[arg(long)]
         model: PathBuf,

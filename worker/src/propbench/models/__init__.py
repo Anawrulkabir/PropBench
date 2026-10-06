@@ -8,6 +8,7 @@ from propbench.models.dilute import (
     omega22_neufeld,
 )
 from propbench.models.ecs import ConformalState, ECSViscosity, conformal_state
+from propbench.models.res import ResidualEntropyViscosity, fit_pcsaft_to_eos, pcsaft_parameters
 
 __all__ = [
     "CheckValue",
@@ -18,10 +19,13 @@ __all__ = [
     "Model",
     "ModelError",
     "Parameter",
+    "ResidualEntropyViscosity",
     "Validity",
     "chapman_enskog_viscosity",
     "conformal_state",
+    "fit_pcsaft_to_eos",
     "free_bounds",
     "free_names",
     "omega22_neufeld",
+    "pcsaft_parameters",
 ]

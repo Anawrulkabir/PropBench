@@ -11,6 +11,7 @@
     ecs_conductivity: ["λ(T, ρ) = λ*(T) + F_λ · λ_ref^r(T₀, ρ₀·χ) + λ_c(T, ρ)", "χ(δ) = χ₀ + χ₁·δ,   f_int = a₀ + a₁·T"],
     chung_viscosity: ["η = η*·(36.344·√(M·T_c)/V_c^(2/3)) ... (Chung et al. 1988)", "predictive: no free parameters unless freed below"],
     lj_dilute_viscosity: ["η₀(T) = k · 26.692·√(M·T) / (σ²·Ω(2,2)*(T*))", "Chapman–Enskog, Neufeld collision integral"],
+    res_viscosity: ["ln(η/η_CE) = A + B·s + C·s² + D·s³,   s = s_res/(R·m)", "PC-SAFT residual entropy and η_CE from FeOs"],
     coolprop_transport: ["CoolProp reference correlation", "comparison only, no parameters"],
   };
 
