@@ -104,7 +104,7 @@ def save(path: str | os.PathLike[str], project: Mapping[str, Any]) -> None:
                 [(a["time"], a["action"], a["detail"]) for a in project.get("audit", [])],
             )
             conn.commit()
-        with open(tmp, "rb") as f:
+        with open(tmp, "r+b") as f:  # fsync needs a writable handle on Windows (FlushFileBuffers)
             os.fsync(f.fileno())
         os.replace(tmp, target)
     finally:
