@@ -176,11 +176,11 @@ pub async fn worker<R: Runtime>(
         kind: "invalid_input",
         message: format!("unknown worker method `{method}`"),
     })?;
-    if method.needs_credentials() {
+    if method.shell_only() {
         return Err(CommandError {
             kind: "invalid_input",
             message: format!(
-                "`{}` takes credentials from the keychain: use its own command",
+                "`{}` needs checks of the shell (keychain, plug-in approval): use its own command",
                 method.name()
             ),
         });
@@ -614,4 +614,200 @@ pub async fn history_list<R: Runtime>(
         return Ok(Vec::new());
     };
     pb_git::history(&dir, 200).map_err(git_error)
+}
+
+// --- plug-ins (README §2f): installed in `<app data>/plugins`, run only after the user approved their permissions ---
+
+fn plugin_error(err: pb_plugin::PluginError) -> CommandError {
+    CommandError {
+        kind: "plugin",
+        message: err.to_string(),
+    }
+}
+
+fn plugin_host<R: Runtime>(app: &AppHandle<R>) -> Result<pb_plugin::PluginHost, CommandError> {
+    let dir = app.path().app_data_dir().map_err(|e| CommandError {
+        kind: "plugin",
+        message: format!("no app data folder: {e}"),
+    })?;
+    Ok(pb_plugin::PluginHost::new(dir.join("plugins")))
+}
+
+/// What the install dialog shows: id, version, digest, signer and the permissions in words.
+#[derive(Serialize)]
+pub struct PluginPackage {
+    id: String,
+    name: String,
+    version: String,
+    runtime: pb_plugin::Runtime,
+    kind: pb_plugin::Kind,
+    digest: String,
+    signer: pb_plugin::Signer,
+    permissions: Vec<String>,
+    reference: String,
+}
+
+impl From<pb_plugin::Package> for PluginPackage {
+    fn from(p: pb_plugin::Package) -> Self {
+        PluginPackage {
+            permissions: p.manifest.permissions.describe(),
+            id: p.manifest.id,
+            name: p.manifest.name,
+            version: p.manifest.version,
+            runtime: p.manifest.runtime,
+            kind: p.manifest.kind,
+            digest: p.digest,
+            signer: p.signer,
+            reference: p.manifest.reference,
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn plugin_list<R: Runtime>(app: AppHandle<R>) -> Result<Vec<pb_plugin::Installed>, CommandError> {
+    plugin_host(&app)?.list().map_err(plugin_error)
+}
+
+/// Verify a plug-in folder (from a file dialog, or a plug-in component installed from the registry) and copy it
+/// into the plug-ins folder. It does not run until `plugin_approve`.
+#[tauri::command]
+pub async fn plugin_install<R: Runtime>(app: AppHandle<R>, dir: String) -> Result<PluginPackage, CommandError> {
+    Ok(plugin_host(&app)?
+        .install(Path::new(&dir))
+        .map_err(plugin_error)?
+        .into())
+}
+
+/// Install a plug-in component installed by the components manager (`<components>/<id>/<version>/plugin`).
+#[tauri::command]
+pub async fn plugin_install_component<R: Runtime>(
+    app: AppHandle<R>,
+    id: String,
+    version: String,
+) -> Result<PluginPackage, CommandError> {
+    let bad = |what: &str| what.is_empty() || what.contains(['/', '\\']) || what.starts_with('.');
+    if bad(&id) || bad(&version) {
+        return Err(CommandError {
+            kind: "invalid_input",
+            message: "invalid component".into(),
+        });
+    }
+    let base = app.path().app_data_dir().map_err(|e| CommandError {
+        kind: "plugin",
+        message: e.to_string(),
+    })?;
+    let dir = base.join("components").join(&id).join(&version).join("plugin");
+    Ok(plugin_host(&app)?.install(&dir).map_err(plugin_error)?.into())
+}
+
+/// The user's approval of exactly the package (digest) and permissions shown in the dialog.
+#[tauri::command]
+pub async fn plugin_approve<R: Runtime>(
+    app: AppHandle<R>,
+    id: String,
+    digest: String,
+    allow_unsigned: bool,
+) -> Result<pb_plugin::Approval, CommandError> {
+    plugin_host(&app)?
+        .approve(&id, &digest, allow_unsigned)
+        .map_err(plugin_error)
+}
+
+#[tauri::command]
+pub async fn plugin_revoke<R: Runtime>(app: AppHandle<R>, id: String) -> Result<(), CommandError> {
+    plugin_host(&app)?.revoke(&id).map_err(plugin_error)
+}
+
+#[tauri::command]
+pub async fn plugin_remove<R: Runtime>(app: AppHandle<R>, id: String) -> Result<(), CommandError> {
+    plugin_host(&app)?.remove(&id).map_err(plugin_error)
+}
+
+/// Trust a plug-in author's minisign public key; returns its key id.
+#[tauri::command]
+pub async fn plugin_trust<R: Runtime>(app: AppHandle<R>, key: String) -> Result<String, CommandError> {
+    plugin_host(&app)?.trust_key(&key).map_err(plugin_error)
+}
+
+/// Evaluate a model plug-in at (T in K, molar density in mol/m³) states: WASM here, Python in the project
+/// environment through the worker.
+#[tauri::command]
+pub async fn plugin_predict<R: Runtime>(
+    app: AppHandle<R>,
+    state: tauri::State<'_, AppEngine>,
+    id: String,
+    temperature: Vec<f64>,
+    molar_density: Vec<f64>,
+    environment: String,
+) -> Result<Vec<f64>, CommandError> {
+    let host = plugin_host(&app)?;
+    let (pkg, _) = host.load(&id).map_err(plugin_error)?;
+    if pkg.manifest.runtime == pb_plugin::Runtime::Wasm {
+        let states: Vec<(f64, f64)> = temperature.into_iter().zip(molar_density).collect();
+        return host.predict(&id, &states).map_err(plugin_error);
+    }
+    let params = serde_json::json!({ "temperature": temperature, "molar_density": molar_density });
+    let out = plugin_python(app, state, id, "predict".into(), params, environment, None).await?;
+    serde_json::from_value(out["result"]["values"].clone()).map_err(|e| CommandError {
+        kind: "plugin",
+        message: format!("plug-in returned no values: {e}"),
+    })
+}
+
+/// Check-value harness of an installed, approved plug-in ("verified" mark).
+#[tauri::command]
+pub async fn plugin_check<R: Runtime>(
+    app: AppHandle<R>,
+    state: tauri::State<'_, AppEngine>,
+    id: String,
+    environment: String,
+) -> Result<Value, CommandError> {
+    let host = plugin_host(&app)?;
+    let (pkg, _) = host.load(&id).map_err(plugin_error)?;
+    if pkg.manifest.runtime == pb_plugin::Runtime::Wasm {
+        let results = host.check(&pkg.dir).map_err(plugin_error)?;
+        let verified = !results.is_empty() && results.iter().all(|r| r.pass);
+        return Ok(serde_json::json!({ "results": results, "verified": verified }));
+    }
+    let out = plugin_python(app, state, id, "check".into(), Value::Null, environment, None).await?;
+    Ok(out["result"].clone())
+}
+
+/// Run an approved Python plug-in in the project environment with its approved permissions (and its declared
+/// folders of the project folder `project_dir`).
+#[tauri::command]
+pub async fn plugin_python<R: Runtime>(
+    app: AppHandle<R>,
+    state: tauri::State<'_, AppEngine>,
+    id: String,
+    method: String,
+    params: Value,
+    environment: String,
+    project_dir: Option<String>,
+) -> Result<Value, CommandError> {
+    let request = plugin_host(&app)?
+        .python_request(&id, project_dir.as_deref().map(Path::new), &method, params)
+        .map_err(plugin_error)?;
+    let params = serde_json::json!({ "request": request, "project": environment });
+    Ok(state.engine(&app)?.invoke(Method::PluginsRun, params).await?)
+}
+
+/// Run an approved WASM tool plug-in with `input` on its standard input and its declared folders of `project_dir`.
+#[tauri::command]
+pub async fn plugin_run<R: Runtime>(
+    app: AppHandle<R>,
+    id: String,
+    input: String,
+    project_dir: Option<String>,
+) -> Result<pb_plugin::wasm::Output, CommandError> {
+    let host = plugin_host(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        host.run(&id, project_dir.as_deref().map(Path::new), input.as_bytes(), &[])
+    })
+    .await
+    .map_err(|e| CommandError {
+        kind: "plugin",
+        message: e.to_string(),
+    })?
+    .map_err(plugin_error)
 }

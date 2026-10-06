@@ -448,3 +448,112 @@ fn history_commit_and_log() {
     assert_eq!(log[0]["message"], "first");
     assert!(dir.join("p.history").join("project.json").is_file());
 }
+
+/// Plug-in workflow of an author and a user: keygen, sign, check, trust, install, approve, predict.
+#[test]
+fn plugin_workflow_signs_checks_approves_and_runs() {
+    let dir = std::env::temp_dir().join(format!("pb-cli-plugins-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let src = dir.join("sutherland-air");
+    std::fs::create_dir_all(&src).unwrap();
+    let template = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/templates/wasm-model");
+    for name in ["plugin.toml", "sutherland.wat"] {
+        std::fs::copy(template.join(name), src.join(name)).unwrap();
+    }
+    let (s, root) = (src.to_str().unwrap(), dir.join("installed"));
+    let plugins = ["--plugins-dir", root.to_str().unwrap()];
+    let key = dir.join("author");
+    json_of(&propbench(&["plugin", "keygen", key.to_str().unwrap()]));
+    let signed = json_of(&propbench(&[
+        "plugin",
+        "sign",
+        s,
+        "--key",
+        key.with_extension("key").to_str().unwrap(),
+    ]));
+    let checked = json_of(&propbench(&["plugin", "check", s]));
+    assert_eq!(checked["verified"], true, "{checked}");
+
+    // not trusted: refused; trusted: installed, but runs only after approval of the digest
+    assert!(
+        !propbench(&[&plugins[..], &["plugin", "install", s]].concat())
+            .status
+            .success()
+    );
+    json_of(&propbench(
+        &[
+            &plugins[..],
+            &["plugin", "trust", key.with_extension("pub").to_str().unwrap()],
+        ]
+        .concat(),
+    ));
+    let installed = json_of(&propbench(&[&plugins[..], &["plugin", "install", s]].concat()));
+    assert_eq!(installed["digest"], signed["digest"]);
+    assert_eq!(installed["signer"]["status"], "trusted");
+    let predict = [
+        &plugins[..],
+        &["plugin", "predict", "sutherland-air", "--state", "273.15,0"],
+    ]
+    .concat();
+    assert!(!propbench(&predict).status.success());
+    let digest = installed["digest"].as_str().unwrap();
+    json_of(&propbench(
+        &[
+            &plugins[..],
+            &["plugin", "approve", "sutherland-air", "--digest", digest],
+        ]
+        .concat(),
+    ));
+    let out = json_of(&propbench(&predict));
+    assert!((out["values"][0].as_f64().unwrap() - 1.716e-5).abs() < 1e-18);
+    let listed = json_of(&propbench(&[&plugins[..], &["plugin", "list"]].concat()));
+    assert_eq!(listed[0]["approved"], true);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A Python plug-in runs in a project environment through the worker, only after approval.
+#[test]
+fn python_plugin_runs_in_the_project_environment_after_approval() {
+    let dir = std::env::temp_dir().join(format!("pb-cli-pyplugin-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let src = dir.join("sutherland-air-py");
+    std::fs::create_dir_all(&src).unwrap();
+    let template = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/templates/python-model");
+    for name in ["plugin.toml", "plugin.py"] {
+        std::fs::copy(template.join(name), src.join(name)).unwrap();
+    }
+    let s = src.to_str().unwrap();
+    let (root, envs) = (dir.join("installed"), dir.join("envs"));
+    let base = [
+        "--plugins-dir",
+        root.to_str().unwrap(),
+        "--envs-dir",
+        envs.to_str().unwrap(),
+    ];
+    let run = |extra: &[&str]| propbench(&[&base[..], extra].concat());
+    json_of(&run(&["plugin", "sign", s]));
+    let digest = json_of(&run(&["plugin", "install", s]))["digest"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let check = ["plugin", "python", "sutherland-air-py", "--method", "check"];
+    let refused = run(&check);
+    assert!(!refused.status.success());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("not approved"));
+    assert!(
+        !run(&["plugin", "approve", "sutherland-air-py", "--digest", &digest])
+            .status
+            .success()
+    );
+    json_of(&run(&[
+        "plugin",
+        "approve",
+        "sutherland-air-py",
+        "--digest",
+        &digest,
+        "--allow-unsigned",
+    ]));
+    let out = json_of(&run(&check));
+    assert_eq!(out["result"]["verified"], true, "{out}");
+    let _ = std::fs::remove_dir_all(&dir);
+}

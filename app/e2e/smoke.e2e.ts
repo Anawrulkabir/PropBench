@@ -62,7 +62,7 @@ test("every screen and dialog opens without errors", async ({ app }) => {
     await menu(app, top, item);
     await expect(app.locator(".work")).toBeVisible();
   }
-  for (const [top, item] of [["File", "Settings…"], ["Tools", "Components…"], ["Tools", "Add-ons…"], ["Tools", "References…"], ["Help", "About PropBench"]]) {
+  for (const [top, item] of [["File", "Settings…"], ["Tools", "Components…"], ["Tools", "Plug-ins…"], ["Tools", "References…"], ["Help", "About PropBench"]]) {
     await menu(app, top, item);
     await expect(app.getByRole("dialog")).toBeVisible();
     await app.keyboard.press("Escape");

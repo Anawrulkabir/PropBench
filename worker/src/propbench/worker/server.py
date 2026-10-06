@@ -70,6 +70,7 @@ METHODS: dict[str, Callable[..., dict[str, Any]]] = {
     "github.device_start": api.github_device_start,
     "github.device_poll": api.github_device_poll,
     "github.push": api.github_push,
+    "plugins.run": api.plugins_run,
 }
 
 PARSE_ERROR = -32700

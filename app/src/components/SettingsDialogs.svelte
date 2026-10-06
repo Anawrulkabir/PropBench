@@ -1,7 +1,6 @@
 <script lang="ts">
-  // Settings (mockup 11), Component manager (mockup 04), Add-on manager (mockup 14) and About. Installing add-ons
-  // (M4c), the AI assistant, GitHub and remote compute (M4b) are not built yet: their controls are
-  // shown disabled. Credentials are never stored by the UI (CLAUDE.md: OS keychain only).
+  // Settings (mockup 11), Component manager (mockup 04), Plug-in manager (mockup 14) and About. Credentials are
+  // never stored by the UI (CLAUDE.md: OS keychain only).
   import { invoke } from "@tauri-apps/api/core";
   import { errorMessage, inTauri, remoteConnect, remoteDisconnect, runOn } from "../lib/api";
   import { loadGithub } from "../lib/history";
@@ -9,6 +8,7 @@
   import { applyScale, loadScale, SCALES } from "../lib/scale";
   import ComponentManager from "./ComponentManager.svelte";
   import DialogFrame from "./DialogFrame.svelte";
+  import PluginManager from "./PluginManager.svelte";
 
   const close = () => (project.dialog = null);
 
@@ -122,22 +122,6 @@
   let scale = $state(loadScale());
   $effect(() => applyScale(scale));
 
-  // --- add-ons (README §2f) ---
-  const ADDONS = [
-    { name: "Data evaluation", what: "Recommended values with uncertainty from all available data", runs: "WASM", status: "verified", installed: "Available" },
-    { name: "Property estimation", what: "Group contribution; PC-SAFT parameters from SMILES", runs: "Python", status: "verified", installed: "Available" },
-    { name: "Binary parameter regression", what: "Fit mixture parameters to VLE and property data", runs: "Rust", status: "verified", installed: "Available" },
-    { name: "VLE consistency tests", what: "Herington, Van Ness and point tests", runs: "WASM", status: "verified", installed: "Available" },
-    { name: "Automatic equation search", what: "Symbolic regression (PySR)", runs: "Python", status: "community", installed: "Available" },
-    { name: "Surface fitting", what: "η(T, p) and ρ(T, p) surfaces with 3D view", runs: "Rust", status: "verified", installed: "Available" },
-    { name: "Advanced statistics", what: "ANOVA, robust regression, hypothesis tests", runs: "WASM", status: "verified", installed: "Available" },
-    { name: "Uncertainty workbench", what: "GUM and Monte Carlo with report", runs: "WASM", status: "verified", installed: "Available" },
-    { name: "Plot digitizer", what: "Data points from figures in PDFs and images", runs: "WASM", status: "community", installed: "Available" },
-    { name: "Molecular simulation link", what: "LAMMPS, Green–Kubo viscosity; runs on a remote server", runs: "Python", status: "community", installed: "Available" },
-  ];
-  let addon = $state(ADDONS[4].name);
-  let verifiedOnly = $state(false);
-  const shownAddons = $derived(ADDONS.filter((a) => !verifiedOnly || a.status === "verified"));
 </script>
 
 {#if project.dialog === "settings"}
@@ -231,49 +215,7 @@
 {:else if project.dialog === "components"}
   <ComponentManager />
 {:else if project.dialog === "addons"}
-  <DialogFrame title="Add-on Manager" width="1100px" height="620px" onclose={close}>
-    <div class="row"><button class="btn">Available ({ADDONS.length})</button><span class="spacer"></span><label class="row"><input type="checkbox" bind:checked={verifiedOnly} /> Verified only</label></div>
-    <div class="well">
-      <table class="grid">
-        <thead><tr><th>Add-on</th><th>What it does</th><th>Runs as</th><th>Status</th><th>Installed</th></tr></thead>
-        <tbody>
-          {#each shownAddons as a (a.name)}
-            <tr class="clickable" class:sel={addon === a.name} onclick={() => (addon = a.name)}>
-              <td><b>{a.name}</b></td><td>{a.what}</td><td>{a.runs}</td>
-              <td class:ok={a.status === "verified"} class:muted={a.status !== "verified"}>{a.status === "verified" ? "⛉ verified" : "community"}</td>
-              <td class="link">{a.installed}</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-    <div class="split2">
-      <fieldset class="group">
-        <legend>Details: {addon}</legend>
-        <table class="props"><tbody>
-          <tr><td>Runs as</td><td>{ADDONS.find((a) => a.name === addon)?.runs === "Python" ? "Python, in the project environment" : "sandboxed (WASM)"}</td></tr>
-          <tr><td>Check-value tests</td><td>[status from registry]</td></tr>
-          <tr><td>Signed by</td><td>[publisher key]</td></tr>
-        </tbody></table>
-      </fieldset>
-      <fieldset class="group">
-        <legend>Permissions requested (approve to install)</legend>
-        <table class="grid"><tbody>
-          <tr><td>✓ Read and write this project's data</td><td class="ok">requested</td></tr>
-          <tr><td>✓ Compute: up to 4 threads, 4 GB memory</td><td class="ok">requested</td></tr>
-          <tr><td>✗ Files outside the project folder</td><td class="error">not requested: denied</td></tr>
-          <tr><td>✗ Network: any other host</td><td class="error">not requested: denied</td></tr>
-        </tbody></table>
-      </fieldset>
-    </div>
-    {#snippet footer()}
-      <span class="muted">Signature checked before install. Add-ons from published methods and open data only. Plug-in system: M4c.</span>
-      <span class="spacer"></span>
-      <button class="btn" disabled>Developer kit…</button>
-      <button class="btn" disabled>Approve and install</button>
-      <button class="btn default" onclick={close}>Close</button>
-    {/snippet}
-  </DialogFrame>
+  <PluginManager />
 {:else if project.dialog === "about"}
   <DialogFrame title="About PropBench" width="520px" height="320px" onclose={close}>
     <p><b>PropBench 0.1.0</b> — an open desktop workbench for thermophysical property models of new fluids.</p>
@@ -289,12 +231,6 @@
     grid-template-columns: 210px 1fr;
     gap: 10px;
     height: 100%;
-  }
-  .split2 {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-top: 8px;
   }
   .list {
     display: flex;
@@ -322,8 +258,5 @@
     gap: 5px 8px;
     align-items: center;
     margin-bottom: 6px;
-  }
-  .link {
-    color: var(--navy);
   }
 </style>

@@ -1,0 +1,35 @@
+# Template Python model plug-in (README §2f): one file (plugin.py) + tests + this manifest.
+# Copy the folder, change id/name, implement your model in plugin.py, list published check values, then:
+#   uv run --project worker pytest plugins/templates/python-model      (check-value harness)
+#   propbench plugin sign plugins/templates/python-model --key your.key
+id = "sutherland-air-py"
+name = "Sutherland viscosity of air (Python)"
+version = "1.0.0"
+api = 1
+kind = "model"
+runtime = "python"
+entry = "plugin.py"
+description = "Dilute-gas viscosity of air from Sutherland's law, with fittable constants; a template for Python model plug-ins."
+license = "MIT"
+authors = ["PropBench contributors"]
+reference = "W. Sutherland, Phil. Mag. 36 (1893) 507; constants from F. M. White, Viscous Fluid Flow, 3rd ed. (2006), Table 1-2"
+fluid = "air"
+quantity = "viscosity"
+
+[permissions]
+# runs in the project environment; nothing beyond computing: no network, no project folders
+time_s = 60
+memory_mb = 1024
+
+# Air at 0.1 MPa: F. P. Incropera et al., Fundamentals of Heat and Mass Transfer, 6th ed. (2007), Table A.4.
+[[check]]
+temperature = 250.0
+expected = 1.596e-5
+rel_tol = 0.01
+source = "Incropera et al. (2007), Table A.4, air, 250 K"
+
+[[check]]
+temperature = 400.0
+expected = 2.301e-5
+rel_tol = 0.01
+source = "Incropera et al. (2007), Table A.4, air, 400 K"

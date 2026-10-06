@@ -97,10 +97,12 @@ pub enum Method {
     GithubDevicePoll,
     #[serde(rename = "github.push")]
     GithubPush,
+    #[serde(rename = "plugins.run")]
+    PluginsRun,
 }
 
 impl Method {
-    pub const ALL: [Method; 42] = [
+    pub const ALL: [Method; 43] = [
         Method::Fluids,
         Method::Properties,
         Method::DatasetPreview,
@@ -143,6 +145,7 @@ impl Method {
         Method::GithubDeviceStart,
         Method::GithubDevicePoll,
         Method::GithubPush,
+        Method::PluginsRun,
     ];
 
     /// The JSON-RPC method name.
@@ -190,6 +193,7 @@ impl Method {
             Method::GithubDeviceStart => "github.device_start",
             Method::GithubDevicePoll => "github.device_poll",
             Method::GithubPush => "github.push",
+            Method::PluginsRun => "plugins.run",
         }
     }
 
@@ -206,6 +210,12 @@ impl Method {
         )
     }
 
+    /// Operations only the shell may send: those taking credentials, and running a plug-in, which needs the
+    /// package and permission checks of `pb-plugin` first.
+    pub fn shell_only(self) -> bool {
+        self.needs_credentials() || self == Method::PluginsRun
+    }
+
     /// Time limit of one request: fits and validation studies may run long, everything else gets the default.
     pub fn timeout(self, default: Duration) -> Duration {
         match self {
@@ -218,7 +228,7 @@ impl Method {
                 default.max(Duration::from_secs(15 * 60))
             }
             // the script's own time limit (at most a day) applies inside the worker
-            Method::EnvRun => default.max(Duration::from_secs(24 * 60 * 60)),
+            Method::EnvRun | Method::PluginsRun => default.max(Duration::from_secs(24 * 60 * 60)),
             _ => default,
         }
     }

@@ -20,6 +20,9 @@ struct Cli {
     /// Folder of installed components (default: $PB_COMPONENTS_DIR).
     #[arg(long, global = true)]
     components_dir: Option<PathBuf>,
+    /// Folder of installed plug-ins (default: $PB_PLUGINS_DIR).
+    #[arg(long, global = true)]
+    plugins_dir: Option<PathBuf>,
     /// Folder of project environments (default: $PB_ENVS_DIR).
     #[arg(long, global = true)]
     envs_dir: Option<PathBuf>,
@@ -180,6 +183,11 @@ enum Command {
         base_url: Option<String>,
         question: String,
     },
+    /// Plug-ins: author tools (keygen, sign, check) and the installed plug-ins (install, approve, run, ...).
+    Plugin {
+        #[command(subcommand)]
+        action: PluginAction,
+    },
     /// Components: list (registry and installed), install by id or from an archive file, remove.
     Components {
         #[command(subcommand)]
@@ -220,6 +228,77 @@ enum SecretAction {
     Set { name: String },
     Has { name: String },
     Delete { name: String },
+}
+
+#[derive(Subcommand)]
+enum PluginAction {
+    /// New minisign key pair for signing plug-ins: writes <name>.pub and <name>.key (keep the .key private).
+    Keygen {
+        name: PathBuf,
+    },
+    /// Write SHA256SUMS (and with --key, plugin.minisig) for a plug-in folder.
+    Sign {
+        dir: PathBuf,
+        #[arg(long)]
+        key: Option<PathBuf>,
+    },
+    /// Check-value harness of a WASM model plug-in folder (Python plug-ins: `plugin python <id> --method check`).
+    Check {
+        dir: PathBuf,
+    },
+    /// Verify a plug-in folder (manifest, files, signature) and show its permissions; installs nothing.
+    Inspect {
+        dir: PathBuf,
+    },
+    /// Copy a verified plug-in into the plug-ins folder. It runs only after `approve`.
+    Install {
+        dir: PathBuf,
+    },
+    /// Approve the declared permissions of an installed plug-in (the digest shown by `install` or `list`).
+    Approve {
+        id: String,
+        #[arg(long)]
+        digest: String,
+        /// Approve an unsigned package (local development).
+        #[arg(long)]
+        allow_unsigned: bool,
+    },
+    Revoke {
+        id: String,
+    },
+    Remove {
+        id: String,
+    },
+    List,
+    /// Trust a minisign public key (file) for plug-in signatures.
+    Trust {
+        key: PathBuf,
+    },
+    /// Evaluate an approved WASM model plug-in at T (K) and molar density (mol/m³) pairs: --state 300,0.
+    Predict {
+        id: String,
+        #[arg(long = "state", value_delimiter = ';')]
+        states: Vec<String>,
+    },
+    /// Run an approved WASM tool plug-in: standard input is passed to it.
+    Run {
+        id: String,
+        #[arg(long)]
+        project_dir: Option<PathBuf>,
+        args: Vec<String>,
+    },
+    /// Run an approved Python plug-in in a project environment (method predict, check, info or run).
+    Python {
+        id: String,
+        #[arg(long, default_value = "check")]
+        method: String,
+        #[arg(long, default_value = "{}")]
+        params: String,
+        #[arg(long, default_value = "plugins")]
+        env: String,
+        #[arg(long)]
+        project_dir: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -349,6 +428,119 @@ fn local_action(command: &Command) -> Option<Result<Value, EngineError>> {
         })()),
         _ => None,
     }
+}
+
+fn plugin_host(dir: Option<&PathBuf>) -> Result<pb_plugin::PluginHost, EngineError> {
+    dir.cloned()
+        .or_else(|| std::env::var_os("PB_PLUGINS_DIR").map(PathBuf::from))
+        .map(pb_plugin::PluginHost::new)
+        .ok_or_else(|| invalid("set --plugins-dir or PB_PLUGINS_DIR"))
+}
+
+fn to_json(value: impl serde::Serialize) -> Value {
+    serde_json::to_value(value).unwrap_or(Value::Null)
+}
+
+/// Plug-in actions that need no worker (everything but running Python plug-ins).
+fn plugin_action(action: &PluginAction, dir: Option<&PathBuf>) -> Option<Result<Value, EngineError>> {
+    use pb_plugin::package;
+    let err = |e: pb_plugin::PluginError| invalid(e.to_string());
+    let inspected = |p: pb_plugin::Package| {
+        json!({
+            "id": p.manifest.id, "version": p.manifest.version, "digest": p.digest, "signer": to_json(&p.signer),
+            "permissions": p.manifest.permissions.describe(), "dir": p.dir,
+        })
+    };
+    let result = (|| match action {
+        PluginAction::Python { .. } => Ok(Value::Null),
+        PluginAction::Keygen { name } => {
+            let (pk, sk) = package::generate_keypair().map_err(err)?;
+            let (pub_path, key_path) = (name.with_extension("pub"), name.with_extension("key"));
+            if key_path.exists() {
+                return Err(invalid(format!("{} exists; not overwritten", key_path.display())));
+            }
+            std::fs::write(&pub_path, pk)?;
+            std::fs::write(&key_path, sk)?;
+            Ok(json!({ "public_key": pub_path, "secret_key": key_path }))
+        }
+        PluginAction::Sign { dir, key } => {
+            let key = match key {
+                Some(path) => Some(package::secret_key(&std::fs::read_to_string(path)?).map_err(err)?),
+                None => None,
+            };
+            let digest = package::sign(dir, key.as_ref()).map_err(err)?;
+            Ok(json!({ "digest": digest, "signed": key.is_some() }))
+        }
+        PluginAction::Check { dir: src } => {
+            // the harness does not depend on who signed the package; any plug-ins folder will do
+            let host = plugin_host(dir).unwrap_or_else(|_| pb_plugin::PluginHost::new(std::env::temp_dir()));
+            let results = host.check(src).map_err(err)?;
+            let verified = !results.is_empty() && results.iter().all(|r| r.pass);
+            Ok(json!({ "verified": verified, "results": to_json(results) }))
+        }
+        PluginAction::Inspect { dir: src } => Ok(inspected(plugin_host(dir)?.inspect(src).map_err(err)?)),
+        PluginAction::Install { dir: src } => Ok(inspected(plugin_host(dir)?.install(src).map_err(err)?)),
+        PluginAction::Approve {
+            id,
+            digest,
+            allow_unsigned,
+        } => Ok(to_json(
+            plugin_host(dir)?.approve(id, digest, *allow_unsigned).map_err(err)?,
+        )),
+        PluginAction::Revoke { id } => {
+            plugin_host(dir)?.revoke(id).map_err(err)?;
+            Ok(json!({ "revoked": id }))
+        }
+        PluginAction::Remove { id } => {
+            plugin_host(dir)?.remove(id).map_err(err)?;
+            Ok(json!({ "removed": id }))
+        }
+        PluginAction::List => Ok(to_json(plugin_host(dir)?.list().map_err(err)?)),
+        PluginAction::Trust { key } => {
+            Ok(json!({ "trusted": plugin_host(dir)?.trust_key(&std::fs::read_to_string(key)?).map_err(err)? }))
+        }
+        PluginAction::Predict { id, states } => {
+            let states = states
+                .iter()
+                .map(|s| {
+                    let v: Vec<f64> = s.split(',').filter_map(|x| x.trim().parse().ok()).collect();
+                    match v[..] {
+                        [t, rho] => Ok((t, rho)),
+                        _ => Err(invalid(format!("state {s:?}: expected T,rho"))),
+                    }
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let values = plugin_host(dir)?.predict(id, &states).map_err(err)?;
+            Ok(json!({ "values": values }))
+        }
+        PluginAction::Run { id, project_dir, args } => {
+            let mut input = vec![];
+            std::io::Read::read_to_end(&mut std::io::stdin(), &mut input)?;
+            Ok(to_json(
+                plugin_host(dir)?
+                    .run(id, project_dir.as_deref(), &input, args)
+                    .map_err(err)?,
+            ))
+        }
+    })();
+    match action {
+        PluginAction::Python { .. } => None,
+        _ => Some(result),
+    }
+}
+
+/// The request for an approved Python plug-in, after the package and approval checks of `pb-plugin`.
+fn python_request(
+    dir: Option<&PathBuf>,
+    id: &str,
+    method: &str,
+    params: &str,
+    project_dir: Option<&Path>,
+) -> Result<Value, EngineError> {
+    let params: Value = serde_json::from_str(params).map_err(|e| invalid(format!("--params: {e}")))?;
+    plugin_host(dir)?
+        .python_request(id, project_dir, method, params)
+        .map_err(|e| invalid(e.to_string()))
 }
 
 fn store_error(err: pb_engine::store::StoreError) -> EngineError {
@@ -566,6 +758,9 @@ async fn run(cli: Cli) -> Result<String, EngineError> {
         command @ (Command::History { .. } | Command::Secret { .. }) => {
             local_action(&command).unwrap_or(Ok(Value::Null))
         }
+        Command::Plugin { action } if !matches!(action, PluginAction::Python { .. }) => {
+            plugin_action(&action, cli.plugins_dir.as_ref()).unwrap_or(Ok(Value::Null))
+        }
         command => {
             let python = match cli.python {
                 Some(path) => path,
@@ -579,7 +774,26 @@ async fn run(cli: Cli) -> Result<String, EngineError> {
                 worker = worker.with_env("PB_ENVS_DIR", dir);
             }
             let engine = Engine::new(EngineConfig::new(worker));
-            let result = execute(&engine, command).await;
+            let result = match command {
+                Command::Plugin {
+                    action:
+                        PluginAction::Python {
+                            id,
+                            method,
+                            params,
+                            env,
+                            project_dir,
+                        },
+                } => match python_request(cli.plugins_dir.as_ref(), &id, &method, &params, project_dir.as_deref()) {
+                    Ok(request) => {
+                        engine
+                            .invoke(Method::PluginsRun, json!({ "request": request, "project": env }))
+                            .await
+                    }
+                    Err(e) => Err(e),
+                },
+                command => execute(&engine, command).await,
+            };
             engine.shutdown().await;
             result
         }
@@ -686,6 +900,10 @@ async fn execute(engine: &Engine, command: Command) -> Result<Value, EngineError
         Command::Project { action } => return project_action(action),
         Command::History { .. } | Command::Secret { .. } => {
             return local_action(&command).unwrap_or(Ok(Value::Null));
+        }
+        Command::Plugin { action } => {
+            return plugin_action(&action, None)
+                .unwrap_or_else(|| Err(invalid("run Python plug-ins with `plugin python`")));
         }
         Command::Assistant {
             provider,

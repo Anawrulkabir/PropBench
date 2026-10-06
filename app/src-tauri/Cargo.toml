@@ -19,6 +19,7 @@ pb-engine.workspace = true
 pb-term.workspace = true
 pb-secrets.workspace = true
 pb-git.workspace = true
+pb-plugin.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri = { version = "2", features = [] }

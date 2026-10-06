@@ -223,7 +223,7 @@
         { label: "CAD & simulation", action: () => project.open("cad") },
         { separator: true, label: "" },
         { label: "Components…", action: () => (project.dialog = "components") },
-        { label: "Add-ons…", action: () => (project.dialog = "addons") },
+        { label: "Plug-ins…", action: () => (project.dialog = "addons") },
       ],
     },
     { label: "Window", items: [{ label: "Reset layout", action: resetLayout }, { label: "Close extra tabs", action: () => (project.tabs = project.tabs.filter((t) => FIXED.has(t))) }] },

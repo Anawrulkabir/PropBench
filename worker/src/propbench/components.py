@@ -11,6 +11,8 @@ Kinds:
 * ``reference-models``: published reference models with check values (``reference_models.json``)
 * ``data``: published experimental datasets (``datasets.json``: worker dataset JSON with DOI and citation)
 * ``python``: pure-Python packages (``site/`` is added to the worker's import path); never the core environment
+* ``plugin``: a signed plug-in package in ``plugin/`` (README §2f); the shell verifies its signature and asks the
+  user to approve its permissions before it can run (``pb-plugin``)
 
 Everything is written below ``root`` (the components folder in the app data folder); nothing else is touched.
 Only standard-library code is used (urllib, hashlib, zipfile).
@@ -35,7 +37,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 REGISTRY_SCHEMA = 1
-KINDS = ("parameters", "reference-models", "data", "python")
+KINDS = ("parameters", "reference-models", "data", "python", "plugin")
 MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 ENV_ROOT = "PB_COMPONENTS_DIR"
 
@@ -207,6 +209,8 @@ def _unpack(data: bytes, expected: Component | None, root: Path) -> Component:
         except KeyError:
             raise ComponentError("archive has no component.json") from None
         component = Component.from_dict(meta)
+        if component.kind == "plugin" and "plugin/plugin.toml" not in archive.namelist():
+            raise ComponentError(f"plug-in component {component.id} has no plugin/plugin.toml")
         if expected is not None and (component.id, component.version) != (expected.id, expected.version):
             raise ComponentError(
                 f"archive holds {component.id} {component.version}, registry says {expected.id} {expected.version}"

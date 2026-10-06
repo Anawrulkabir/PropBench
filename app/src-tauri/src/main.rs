@@ -38,7 +38,18 @@ fn builder<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
             commands::github_signin_poll,
             commands::github_push,
             commands::history_commit,
-            commands::history_list
+            commands::history_list,
+            commands::plugin_list,
+            commands::plugin_install,
+            commands::plugin_install_component,
+            commands::plugin_approve,
+            commands::plugin_revoke,
+            commands::plugin_remove,
+            commands::plugin_trust,
+            commands::plugin_predict,
+            commands::plugin_check,
+            commands::plugin_python,
+            commands::plugin_run
         ])
 }
 

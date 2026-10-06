@@ -756,6 +756,17 @@ def github_push(
     return github.push(token, owner, repo, branch, encoded, message)
 
 
+# --- plug-ins (M4c) ---
+
+
+def plugins_run(request: Mapping[str, Any], project: str) -> dict[str, Any]:
+    """Run an approved Python plug-in in the project's environment. Only the shell sends this, after ``pb-plugin``
+    verified the package and the user's approval; ``request`` carries the approved permissions."""
+    from propbench import plugins
+
+    return plugins.run(request, project=project)
+
+
 # --- project environments (M1c) ---
 
 
@@ -852,6 +863,7 @@ __all__ = [
     "model_kinds",
     "model_predict",
     "model_references",
+    "plugins_run",
     "properties",
     "refs_doi",
     "refs_format",

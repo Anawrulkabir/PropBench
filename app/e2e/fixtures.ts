@@ -94,6 +94,8 @@ async function connect(page: Page, worker: Worker) {
         return files.has(String(args.path)) ? ok(files.get(String(args.path))) : { error: { kind: "project", message: "not found" } };
       case "project_recover":
         return ok(null);
+      case "plugin_list":
+        return ok([]);
       case "plugin:dialog|save":
       case "plugin:dialog|open":
         return ok(path.join("/tmp", "propbench-e2e", "cf3i.pbp"));
