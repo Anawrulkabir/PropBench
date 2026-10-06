@@ -159,3 +159,55 @@ fn unknown_method_is_rejected_before_reaching_the_worker() {
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("unknown method"));
 }
+
+/// Consistency and comparison on the command line, with a planted 3 % offset between two datasets.
+#[test]
+fn consistency_and_compare() {
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("cli_consistency");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = |name: &str| dir.join(name).to_str().unwrap().to_owned();
+    let states: Vec<(f64, f64)> = [300.0, 320.0]
+        .iter()
+        .flat_map(|&t| [2.0e6, 5.0e6, 1.0e7].map(|p| (t, p)))
+        .collect();
+    let params = serde_json::json!({
+        "fluid": "R236FA", "pair": "PT_INPUTS", "outputs": ["V"],
+        "values1": states.iter().map(|s| s.1).collect::<Vec<_>>(),
+        "values2": states.iter().map(|s| s.0).collect::<Vec<_>>(),
+    });
+    let eta = json_of(&propbench(&["call", "properties", &params.to_string()]));
+    let dataset = |name: &str, factor: f64| {
+        serde_json::json!({
+            "schema_version": 1, "name": name, "fluid": "R236FA", "quantity": "viscosity",
+            "temperature": states.iter().map(|s| s.0).collect::<Vec<_>>(),
+            "pressure": states.iter().map(|s| s.1).collect::<Vec<_>>(),
+            "values": (0..states.len()).map(|i| eta["outputs"]["V"][i].as_f64().unwrap() * factor).collect::<Vec<_>>(),
+            "expanded_uncertainty": (0..states.len()).map(|i| eta["outputs"]["V"][i].as_f64().unwrap() * 0.02).collect::<Vec<_>>(),
+        })
+    };
+    let data = serde_json::json!([dataset("a", 1.0), dataset("b", 1.03)]);
+    std::fs::write(path("data.json"), data.to_string()).unwrap();
+
+    let report = json_of(&propbench(&["consistency", "--data", &path("data.json")]));
+    let offsets = report["offsets"].as_array().unwrap();
+    let b_vs_a = offsets
+        .iter()
+        .find(|o| o["dataset"] == "b" && o["reference"] == "a")
+        .unwrap();
+    // a straight trend in p on each isotherm leaves a small curvature residual even at identical states
+    assert!((b_vs_a["offset"].as_f64().unwrap() - 3.0).abs() < 0.1, "{b_vs_a}");
+    assert_eq!(report["models"][0], "CoolProp viscosity correlation");
+
+    let rows = json_of(&propbench(&["compare", "--data", &path("data.json")]));
+    let b = rows["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["dataset"] == "b")
+        .unwrap();
+    assert!((b["deviations"]["bias"].as_f64().unwrap() - 3.0).abs() < 1e-6, "{b}");
+
+    let bad = propbench(&["compare", "--data", &path("data.json"), "--model", "nofile"]);
+    assert!(!bad.status.success());
+    assert!(String::from_utf8_lossy(&bad.stderr).contains("NAME=FILE"));
+}

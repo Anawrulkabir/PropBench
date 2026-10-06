@@ -104,6 +104,31 @@ enum Command {
         #[arg(long, default_value_t = 1)]
         workers: u32,
     },
+    /// Consistency of datasets: overlaps, model-free checks at equal T, offsets, z-scores (against reference
+    /// models and the given model specs).
+    Consistency {
+        #[arg(long)]
+        data: PathBuf,
+        /// Model spec files to compare with, each as NAME=FILE (repeatable).
+        #[arg(long = "model")]
+        models: Vec<String>,
+        /// Leave out the reference models (published registry, CoolProp correlations).
+        #[arg(long)]
+        no_references: bool,
+        /// Isotherm tolerance in K.
+        #[arg(long, default_value_t = 1.0)]
+        t_tol: f64,
+    },
+    /// Deviation statistics of models (reference models and the given model specs) on every dataset.
+    Compare {
+        #[arg(long)]
+        data: PathBuf,
+        /// Model spec files, each as NAME=FILE (repeatable).
+        #[arg(long = "model")]
+        models: Vec<String>,
+        #[arg(long)]
+        no_references: bool,
+    },
     /// Any worker operation by name with JSON params, e.g. `call selection.lock '{"rule": {...}}'`.
     Call {
         method: String,
@@ -147,6 +172,18 @@ fn read_model(path: &Path) -> Result<Value, EngineError> {
         Some(model) if model.is_object() => model.clone(),
         _ => value,
     })
+}
+
+/// `NAME=FILE` model arguments as `[{name, model}]` (the file holds a spec or a fit/model output).
+fn named_models(args: &[String]) -> Result<Value, EngineError> {
+    let mut list = Vec::new();
+    for arg in args {
+        let (name, file) = arg
+            .split_once('=')
+            .ok_or_else(|| invalid(format!("--model expects NAME=FILE, got `{arg}`")))?;
+        list.push(json!({"name": name, "model": read_model(Path::new(file))?}));
+    }
+    Ok(Value::Array(list))
 }
 
 fn path_string(path: &Path) -> Result<String, EngineError> {
@@ -253,6 +290,29 @@ async fn execute(engine: &Engine, command: Command) -> Result<Value, EngineError
                 "options": options, "k": k, "n_bootstrap": n_bootstrap, "seed": seed, "workers": workers,
             });
             (Method::StudyValidate, params)
+        }
+        Command::Consistency {
+            data,
+            models,
+            no_references,
+            t_tol,
+        } => {
+            let params = json!({
+                "datasets": read_datasets(&data)?, "models": named_models(&models)?,
+                "include_references": !no_references, "t_tol": t_tol,
+            });
+            (Method::ConsistencyAnalyze, params)
+        }
+        Command::Compare {
+            data,
+            models,
+            no_references,
+        } => {
+            let params = json!({
+                "datasets": read_datasets(&data)?, "models": named_models(&models)?,
+                "include_references": !no_references,
+            });
+            (Method::ModelCompare, params)
         }
         Command::Call { method, params } => {
             let method = Method::from_name(&method).ok_or_else(|| {

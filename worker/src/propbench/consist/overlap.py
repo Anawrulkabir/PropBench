@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from propbench.core import Dataset, DatasetError
+from propbench.core import Dataset, DatasetError, Phase
 from propbench.fit import bayesian_linear_fit
 
 
@@ -34,6 +34,33 @@ class Overlap:
             "a_points": self.a_points.tolist(),
             "b_points": self.b_points.tolist(),
         }
+
+
+_PHASE_CLASS = {
+    Phase.LIQUID: "liquid",
+    Phase.SUPERCRITICAL_LIQUID: "liquid",
+    Phase.VAPOR: "vapor",
+    Phase.SUPERCRITICAL_GAS: "vapor",
+    Phase.SUPERCRITICAL: "supercritical",
+}
+
+
+def phase_classes(dataset: Dataset) -> np.ndarray:
+    """Liquid-like, vapour-like or supercritical for each point ("any" when the dataset has no phases). A pressure
+    trend is only meaningful within one phase: it must never be drawn across the saturation curve."""
+    if dataset.phase is None:
+        return np.full(len(dataset), "any", dtype=object)
+    return np.array([_PHASE_CLASS.get(ph, ph.value) for ph in dataset.phase], dtype=object)
+
+
+def _phase_isotherms(dataset: Dataset, tol: float) -> list[np.ndarray]:
+    """Isotherms split by phase class."""
+    classes = phase_classes(dataset)
+    groups = []
+    for idx in isotherms(dataset.temperature, tol):
+        for cls in dict.fromkeys(classes[idx]):
+            groups.append(idx[classes[idx] == cls])
+    return groups
 
 
 def relative_standard_uncertainty(dataset: Dataset) -> np.ndarray | None:
@@ -90,6 +117,7 @@ class IsothermTrend:
     p_range: tuple[float, float]
     n: int
     u_stated: float | None  # mean relative standard uncertainty stated for these points
+    phase: str = "any"
 
     def predict(self, pressure: float) -> tuple[float, float]:
         """Value and relative standard uncertainty of the trend at ``pressure``."""
@@ -103,12 +131,13 @@ class IsothermTrend:
 
 
 def isotherm_trends(dataset: Dataset, tol: float = 1.0) -> list[IsothermTrend]:
-    """Trends on every isotherm of ``dataset`` with at least two pressures."""
+    """Trends on every isotherm (within one phase class) of ``dataset`` with at least two pressures."""
     if dataset.pressure is None:
         raise DatasetError(f"{dataset.name}: the pressure trend needs pressures")
     u = relative_standard_uncertainty(dataset)
+    classes = phase_classes(dataset)
     trends = []
-    for idx in isotherms(dataset.temperature, tol):
+    for idx in _phase_isotherms(dataset, tol):
         p = dataset.pressure[idx]
         if len(np.unique(p)) < 2:
             continue
@@ -134,6 +163,7 @@ def isotherm_trends(dataset: Dataset, tol: float = 1.0) -> list[IsothermTrend]:
                 (float(p.min()), float(p.max())),
                 len(idx),
                 None if u is None else float(np.mean(u[idx])),
+                str(classes[idx[0]]),
             )
         )
     return trends
@@ -190,11 +220,13 @@ def compare_to_trends(b: Dataset, a: Dataset, t_tol: float = 1.0) -> list[Compar
         raise DatasetError(f"{b.name}: the comparison needs pressures")
     trends = isotherm_trends(a, t_tol)
     u_b = relative_standard_uncertainty(b)
+    classes = phase_classes(b)
     out = []
     for i in range(len(b)):
-        if not trends:
-            break
-        nearest = min(trends, key=lambda tr: abs(tr.temperature - b.temperature[i]))
+        same_phase = [tr for tr in trends if "any" in (tr.phase, classes[i]) or tr.phase == classes[i]]
+        if not same_phase:
+            continue
+        nearest = min(same_phase, key=lambda tr: abs(tr.temperature - b.temperature[i]))
         delta = float(b.temperature[i] - nearest.temperature)
         if abs(delta) > t_tol:
             continue
@@ -259,7 +291,9 @@ def pressure_trend_checks(a: Dataset, b: Dataset, t_tol: float = 1.0) -> list[Tr
         if not trend.slope_significant:
             continue
         sign = 1 if trend.coef[1] > 0 else -1
-        near = np.flatnonzero(np.abs(b.temperature - trend.temperature) <= t_tol)
+        b_classes = phase_classes(b)
+        same = np.array([trend.phase == "any" or c in ("any", trend.phase) for c in b_classes], dtype=bool)
+        near = np.flatnonzero((np.abs(b.temperature - trend.temperature) <= t_tol) & same)
         if len(near) == 0:
             continue
         violations = []
@@ -278,4 +312,4 @@ def _trend_rows(dataset: Dataset, tol: float) -> list[np.ndarray]:
     pressure = dataset.pressure
     if pressure is None:
         return []
-    return [idx for idx in isotherms(dataset.temperature, tol) if len(np.unique(pressure[idx])) >= 2]
+    return [idx for idx in _phase_isotherms(dataset, tol) if len(np.unique(pressure[idx])) >= 2]

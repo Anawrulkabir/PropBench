@@ -37,10 +37,16 @@ pub enum Method {
     SelectionLock,
     #[serde(rename = "selection.select")]
     SelectionSelect,
+    #[serde(rename = "consistency.analyze")]
+    ConsistencyAnalyze,
+    #[serde(rename = "model.references")]
+    ModelReferences,
+    #[serde(rename = "model.compare")]
+    ModelCompare,
 }
 
 impl Method {
-    pub const ALL: [Method; 12] = [
+    pub const ALL: [Method; 15] = [
         Method::Fluids,
         Method::Properties,
         Method::DatasetPreview,
@@ -53,6 +59,9 @@ impl Method {
         Method::StudyValidate,
         Method::SelectionLock,
         Method::SelectionSelect,
+        Method::ConsistencyAnalyze,
+        Method::ModelReferences,
+        Method::ModelCompare,
     ];
 
     /// The JSON-RPC method name.
@@ -70,6 +79,9 @@ impl Method {
             Method::StudyValidate => "study.validate",
             Method::SelectionLock => "selection.lock",
             Method::SelectionSelect => "selection.select",
+            Method::ConsistencyAnalyze => "consistency.analyze",
+            Method::ModelReferences => "model.references",
+            Method::ModelCompare => "model.compare",
         }
     }
 
@@ -82,6 +94,7 @@ impl Method {
         match self {
             Method::ModelFit => default.max(Duration::from_secs(15 * 60)),
             Method::StudyValidate => default.max(Duration::from_secs(4 * 60 * 60)),
+            Method::ConsistencyAnalyze | Method::ModelCompare => default.max(Duration::from_secs(10 * 60)),
             _ => default,
         }
     }

@@ -40,6 +40,9 @@ METHODS: dict[str, Callable[..., dict[str, Any]]] = {
     "study.validate": api.study_validate,
     "selection.lock": api.selection_lock,
     "selection.select": api.selection_select,
+    "consistency.analyze": api.consistency_analyze,
+    "model.references": api.model_references,
+    "model.compare": api.model_compare,
 }
 
 PARSE_ERROR = -32700

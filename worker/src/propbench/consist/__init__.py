@@ -12,6 +12,7 @@ from propbench.consist.overlap import (
     find_overlaps,
     isotherm_trends,
     isotherms,
+    phase_classes,
     pressure_trend_checks,
     relative_standard_uncertainty,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "find_overlaps",
     "isotherm_trends",
     "isotherms",
+    "phase_classes",
     "pressure_trend_checks",
     "relative_offset",
     "relative_standard_uncertainty",

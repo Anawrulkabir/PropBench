@@ -9,7 +9,7 @@ from typing import Any
 
 import numpy as np
 
-from propbench.backends import Backend
+from propbench.backends import Backend, CoolPropBackend, assign_phases
 from propbench.consist.offsets import Offset, ZScores, relative_offset, z_scores
 from propbench.consist.overlap import (
     Comparison,
@@ -106,6 +106,11 @@ def consistency_report(
         raise DatasetError("the consistency study needs at least one dataset")
     if len({(d.fluid, d.quantity) for d in datasets}) != 1:
         raise DatasetError("the consistency study needs datasets of one fluid and one property")
+    # pressure trends are drawn within one phase: give every dataset with pressures its EoS phases if it has none
+    datasets = [
+        assign_phases(d, backend or CoolPropBackend()).dataset if d.phase is None and d.pressure is not None else d
+        for d in datasets
+    ]
     report = ConsistencyReport(find_overlaps(datasets, t_tol), [], [], [], [], [])
     by_name = {d.name: d for d in datasets}
     for overlap in report.overlaps:

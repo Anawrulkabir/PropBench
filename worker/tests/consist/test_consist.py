@@ -173,3 +173,31 @@ def test_report_requires_one_fluid_and_property():
         consistency_report([dataset("a", LAB), dataset("b", LAB, fluid="R134a")])
     with pytest.raises(DatasetError):
         consistency_report([])
+
+
+def test_trends_never_cross_the_saturation_curve():
+    from propbench.core import Phase
+
+    # one isotherm with two liquid points and one vapour point: the trend uses the liquid points only
+    t = [340.0, 340.0, 340.0]
+    p = [1e5, 2e6, 1e7]
+    y = [trend_value(340.0, 1e5) * 0.1, trend_value(340.0, 2e6), trend_value(340.0, 1e7)]
+    mixed = Dataset(
+        "mixed", "R236FA", Quantity.VISCOSITY, t, y, pressure=p, phase=(Phase.VAPOR, Phase.LIQUID, Phase.LIQUID)
+    )
+    trends = isotherm_trends(mixed, 1.0)
+    assert len(trends) == 1  # the single vapour point gives no trend
+    assert trends[0].phase == "liquid"
+    assert trends[0].coef[1] == pytest.approx(0.02e-6, rel=1e-9)
+    probe = Dataset(
+        "probe",
+        "R236FA",
+        Quantity.VISCOSITY,
+        [340.0, 340.0],
+        [trend_value(340.0, 5e6), trend_value(340.0, 2e5) * 0.1],
+        pressure=[5e6, 2e5],
+        phase=(Phase.LIQUID, Phase.VAPOR),
+    )
+    comps = compare_to_trends(probe, mixed, 1.0)
+    assert [c.point_id for c in comps] == [0]  # the vapour point has no vapour trend to compare with
+    assert comps[0].difference == pytest.approx(0.0, abs=1e-9)
