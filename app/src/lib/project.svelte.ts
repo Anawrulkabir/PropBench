@@ -126,6 +126,8 @@ class Project {
   /** Dataset shown in the worksheet tab. */
   worksheet = $state<string | null>(null);
   stopRequested = $state(false);
+  /** The guided CF3I tutorial panel is open. */
+  tutorial = $state(false);
   /** Document tabs of the work area, in order (fixed ones first, then tabs opened from the menus). */
   tabs = $state<View[]>(["data", "consistency", "deviations", "fit", "fitting", "study", "results"]);
 

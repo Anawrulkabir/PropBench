@@ -27,6 +27,7 @@
   import CurveFitView from "./components/CurveFitView.svelte";
   import UncertaintyView from "./components/UncertaintyView.svelte";
   import ReferencesDialog from "./components/ReferencesDialog.svelte";
+  import TutorialPanel from "./components/TutorialPanel.svelte";
   import { applyScale, loadScale } from "./lib/scale";
   import type { MenuItem } from "./lib/menu";
   import { project, type View } from "./lib/project.svelte";
@@ -216,7 +217,8 @@
       ],
     },
     { label: "Window", items: [{ label: "Reset layout", action: resetLayout }, { label: "Close extra tabs", action: () => (project.tabs = project.tabs.filter((t) => FIXED.has(t))) }] },
-    { label: "Help", items: [{ label: "CF3I tutorial", action: () => project.loadExample().then(() => project.open("data")) }, { label: "About PropBench", action: () => (project.dialog = "about") }] },
+    { label: "Help", items: [{ label: "CF3I tutorial (guided)", action: () => (project.tutorial = true) },
+        { label: "Load CF3I example data", action: () => project.loadExample().then(() => project.open("data")) }, { label: "About PropBench", action: () => (project.dialog = "about") }] },
   ]);
 
   applyScale(loadScale());
@@ -350,6 +352,7 @@
 </div>
 
 {#if project.importOpen}<ImportDialog />{/if}
+{#if project.tutorial}<TutorialPanel />{/if}
 {#if project.dialog === "wizard"}<WizardDialog />
 {:else if project.dialog === "references"}<ReferencesDialog />
 {:else if project.dialog && project.dialog !== "import"}<SettingsDialogs />{/if}

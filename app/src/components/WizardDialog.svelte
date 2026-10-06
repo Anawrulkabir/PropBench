@@ -37,6 +37,7 @@
     else if (task === "tutorial") {
       await project.loadExample();
       project.open("data");
+      project.tutorial = true;
     } else {
       project.importOpen = true;
       if (task === "consistency") project.view = "consistency";

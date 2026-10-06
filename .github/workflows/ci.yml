@@ -105,6 +105,11 @@ jobs:
       - name: UI tests (vitest)
         run: npm test
         working-directory: app
+      - name: GUI smoke tests (Playwright, real worker)
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+        working-directory: app
 
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
