@@ -26,7 +26,8 @@ where
     let tmp = temp_path(path);
     let _ = fs::remove_file(&tmp);
     let result = write(&tmp).and_then(|()| {
-        fs::File::open(&tmp)?.sync_all()?;
+        // sync_all needs a writable handle on Windows (FlushFileBuffers)
+        fs::OpenOptions::new().write(true).open(&tmp)?.sync_all()?;
         fs::rename(&tmp, path)?;
         Ok(())
     });
