@@ -1,9 +1,251 @@
-# PropBench — an open desktop workbench for thermophysical property models of new fluids
+<div align="center">
+
+<img src="app/src-tauri/icons/128x128.png" width="96" alt="PropBench icon">
+
+# PropBench
+
+### From new measurements to a validated, documented property model of a new fluid.
+
+An open-source desktop workbench for **thermophysical property research**: import laboratory data, check it against
+published measurements, fit and cross-validate models with stated uncertainty, and export figures, reports and
+CoolProp-ready models — on Windows, macOS and Linux, without writing code.
+
+[![CI](https://github.com/Anawrulkabir/PropBench/actions/workflows/ci.yml/badge.svg)](https://github.com/Anawrulkabir/PropBench/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-0A246A.svg)](LICENSE)
+![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-555)
+![Status](https://img.shields.io/badge/status-pre--alpha-b5540a)
+<br>
+![Rust](https://img.shields.io/badge/Rust-Tauri%202-000?logo=rust)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![Svelte](https://img.shields.io/badge/Svelte-TypeScript-FF3E00?logo=svelte&logoColor=white)
+![CoolProp](https://img.shields.io/badge/CoolProp-reference%20EoS-1f5fa8)
+
+[Features](#features) · [Screenshots](#screenshots) · [Quick start](#quick-start) · [Architecture](#how-it-works) ·
+[Tech stack](#tech-stack) · [Roadmap](#6-roadmap-to-beta) · [Contributing](#contributing)
+
+<br>
+
+<img src="docs/images/app/deviations.png" alt="PropBench main window: deviations of three published CF3I viscosity datasets from a fitted ECS model" width="100%">
+
+<sub>The real app: three published CF₃I viscosity datasets (63 points) against an extended-corresponding-states model
+fitted in PropBench, with the per-point deviation table and the fitted parameters.</sub>
+
+</div>
+
+---
+
+## Why PropBench?
+
+When a new working fluid (a low-GWP refrigerant, a mixture, a heat-transfer fluid) is measured for the first time, turning
+those measurements into a property model is still a patchwork of spreadsheets, scripts and closed tools. Results are hard
+to reproduce and the uncertainty is rarely stated.
+
+PropBench puts the whole study into **one project file**, with every step recorded:
+
+| | |
+|---|---|
+| 🧪 **Your data, checked** | Import CSV, Excel or ThermoML; units and phases are assigned and checked against a reference equation of state |
+| 🔍 **Find where datasets disagree** | Overlaps between laboratories, offsets with 95 % intervals, model-free trend checks, z-scores against NIST reference models |
+| 📈 **Fit honest models** | Weighted least squares in relative deviation, multistart, fixed/free parameters, standard errors and correlations |
+| ✅ **Validate before you trust** | Leave-one-dataset-out, leave-one-state-out, k-fold, bootstrap — with a selection rule **locked before fitting** and physics checks |
+| 🖼️ **Publish** | Journal-sized figures (Elsevier, ACS, Springer, AIP; vector or PNG up to 2500 dpi), Markdown/Word/PDF reports, reproducibility bundles |
+| 🔁 **Use the model elsewhere** | Export to CoolProp and verify the exported model gives identical values |
+
+## Features
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**Data and consistency**
+- CSV / XLSX / ThermoML importers with mapping templates
+- Worksheets with formulas, masks and statistics
+- Saturation states from the reference EoS when pressure is not reported
+- Consistency analysis: overlaps, offsets, model-free bounds, z-scores
+
+**Models and fitting**
+- Extended corresponding states (ECS), residual entropy scaling (RES), dilute-gas models
+- NIST reference models with published check values (e.g. NISTIR 8209)
+- General and global curve fitting, GUM uncertainty propagation (JCGM 100)
+- Backends: CoolProp (reference EoS), FeOs PC-SAFT for cross-checks
+
+</td>
+<td width="50%" valign="top">
+
+**Validation and results**
+- LOSO, LOSTATE, LOTO, k-fold and bootstrap cross-validation
+- Physics checks (dilute-gas limit, monotonic trends, extrapolation)
+- Ranked comparison of candidates against reference models
+
+**Workbench**
+- Graph studio with layers, templates and journal presets
+- Property calculator across backends
+- Code editor (Monaco) and terminal in an isolated per-project environment; GUI actions recorded as Python
+- AI assistant (bring your own key) that never changes data without a previewed confirmation
+- Git/GitHub integration, remote compute over SSH
+- Sandboxed plug-ins (WebAssembly or Python) with declared permissions and signed packages
+
+</td>
+</tr>
+</table>
+
+## Screenshots
+
+All screenshots below are of the **running application** with the published CF₃I data (regenerate them with
+`cd app && npm run build && npm run screenshots`).
+
+<table>
+<tr>
+<td width="50%"><img src="docs/images/app/tutorial.png" alt="Guided tutorial and data consistency"><br><sub><b>Guided tutorial</b> — the CF₃I study step by step; here the consistency check finds a 7.4 % offset between two laboratories at 333 K.</sub></td>
+<td width="50%"><img src="docs/images/app/results.png" alt="Results"><br><sub><b>Results</b> — cross-validated ranking, comparison with the NIST reference model (NISTIR 8209), folds and physics checks.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/images/app/data-check.png" alt="Data check"><br><sub><b>Data check</b> — phases from the reference EoS compared with the phases stated in each source.</sub></td>
+<td><img src="docs/images/app/graph-studio.png" alt="Graph studio"><br><sub><b>Graph studio</b> — layers, symbols, error bars and journal export presets.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/images/app/worksheet.png" alt="Worksheet"><br><sub><b>Worksheet</b> — formulas, masking and statistics on any dataset.</sub></td>
+<td><img src="docs/images/app/curve-fit.png" alt="General curve fit"><br><sub><b>Curve fitting</b> — general and global fits with diagnostics and uncertainty.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/images/app/code.png" alt="Code editor"><br><sub><b>Code and AI</b> — <code>import propbench</code> scripts in the project environment, with time and memory limits.</sub></td>
+<td><img src="docs/images/app/calculator.png" alt="Property calculator"><br><sub><b>Property calculator</b> — one state, several backends side by side.</sub></td>
+</tr>
+</table>
+
+<details>
+<summary><b>Design mockups</b> (the target design, including screens still being built — click to expand)</summary>
+<br>
+
+Static mockups from [`design/mockups/`](design/mockups/). Numbers in them are illustrative (they use the
+laboratory dataset, which is not part of the repository); screens 15–18 are planned features.
+
+| | |
+|---|---|
+| ![Main window](docs/images/mockups/01_Main.png)<br><sub>01 · Main window: fit and validate</sub> | ![Consistency](docs/images/mockups/02_Consistency.png)<br><sub>02 · Data consistency</sub> |
+| ![Welcome](docs/images/mockups/03_Welcome.png)<br><sub>03 · New project wizard</sub> | ![Components](docs/images/mockups/04_Components.png)<br><sub>04 · Component manager</sub> |
+| ![Import](docs/images/mockups/05_Import.png)<br><sub>05 · Import</sub> | ![Data check](docs/images/mockups/06_DataCheck.png)<br><sub>06 · Data check</sub> |
+| ![Run setup](docs/images/mockups/07_RunSetup.png)<br><sub>07 · Study setup and run</sub> | ![Results](docs/images/mockups/08_Results.png)<br><sub>08 · Results</sub> |
+| ![Graph studio](docs/images/mockups/09_GraphStudio.png)<br><sub>09 · Graph studio</sub> | ![Code](docs/images/mockups/10_Code.png)<br><sub>10 · Code editor, terminal and AI</sub> |
+| ![Settings](docs/images/mockups/11_Settings.png)<br><sub>11 · Settings: connections</sub> | ![Worksheet](docs/images/mockups/12_Worksheet.png)<br><sub>12 · Worksheet</sub> |
+| ![Fitting](docs/images/mockups/13_Fitting.png)<br><sub>13 · Curve fitting and uncertainty</sub> | ![Add-ons](docs/images/mockups/14_Addons.png)<br><sub>14 · Add-on manager</sub> |
+| ![3D surface](docs/images/mockups/15_Surface3D.png)<br><sub>15 · 3D surface viewer (planned)</sub> | ![Experiment](docs/images/mockups/16_Experiment.png)<br><sub>16 · Experiment visualizer (planned)</sub> |
+| ![Setup builder](docs/images/mockups/17_SetupBuilder.png)<br><sub>17 · Setup builder (planned)</sub> | ![CAD and simulation](docs/images/mockups/18_CADSim.png)<br><sub>18 · CAD and simulation (planned)</sub> |
+| ![Calculator](docs/images/mockups/21_Calculator.png)<br><sub>21 · Property calculator</sub> | |
+
+</details>
+
+## Quick start
+
+> **Status: pre-alpha.** There are no signed releases yet; CI builds unsigned installers (`.exe`, `.dmg`, `.deb`,
+> AppImage) for every pull request. To try PropBench today, run it from source.
+
+```bash
+# Prerequisites: Rust (rustup), Node.js 20+, uv. No system Python needed: uv downloads a managed one.
+git clone https://github.com/Anawrulkabir/PropBench.git && cd PropBench
+uv sync --project worker                 # Python science worker (CoolProp, SciPy, ...)
+cd app && npm ci && npm run tauri dev    # start the desktop app
+```
+
+Then choose **Help › CF3I tutorial (guided)** and follow the panel: load the published data, check it, find where the
+datasets disagree, fit a model, validate it, compare with the NIST reference model and export a figure.
+
+**Prefer the command line or Python?** Every GUI action is also available from both:
+
+```bash
+cargo run -p pb-cli -- --help            # the propbench CLI
+```
+
+```python
+import propbench as pb                   # inside the app's code editor, or the worker environment
+data = pb.datasets()                     # the open project's datasets (or a .pbp file)
+model = pb.model("ecs_viscosity", "R13I1", reference_fluid="R134a")
+result = pb.fit(model, data)
+cv = pb.validate(model, data, scheme="lostate")
+```
+
+## How it works
+
+```
+┌──────────────────────────── Desktop app (Tauri) ─────────────────────────────┐
+│  Svelte / TypeScript UI  ──Tauri commands──▶  Rust shell                     │
+│  (worksheets, plots,                          pb-engine  · job graph, cache, │
+│   graph studio, editor)                                    cancel / resume   │
+│                                               pb-store   · .pbp project file │
+│                                                            (SQLite, atomic)  │
+│                                               pb-plugin  · WASM sandbox,     │
+│                                                            signed packages   │
+│                                               pb-git · pb-term · pb-secrets  │
+└───────────────────────────────────────┬──────────────────────────────────────┘
+                                        │ JSON-RPC 2.0 over stdio (supervised)
+                        ┌───────────────▼────────────────┐
+                        │  Python science worker         │
+                        │  propbench: importers, models, │
+                        │  fitting, validation, figures, │
+                        │  reports — CoolProp, SciPy,    │
+                        │  NumPy, Matplotlib, FeOs       │
+                        └────────────────────────────────┘
+```
+
+- **The UI never computes.** Every action is a Tauri command calling `pb-engine`, the same functions the
+  `propbench` CLI and Python package use.
+- **Integrate, don't rebuild.** The science comes from maintained libraries (CoolProp, SciPy, FeOs, …); PropBench is the
+  glue, the workflow and the checks.
+- **Isolated and self-contained.** The installer bundles its own Python; scripts and plug-ins run in per-project
+  environments, in separate processes with time and memory limits. Nothing is written outside the app data and project folders.
+- **Reproducible.** Every job is deterministic given its inputs and seed; reports record versions and seeds.
+
+## Tech stack
+
+| Layer | Technologies |
+|---|---|
+| Desktop shell | **Rust** · Tauri 2 · Tokio · Serde · rusqlite (SQLite) · clap · Wasmtime (plug-in sandbox) · portable-pty |
+| User interface | **TypeScript** · Svelte 5 · Vite · Monaco Editor · xterm.js |
+| Science worker | **Python 3.12** · CoolProp · NumPy · SciPy · Matplotlib · pint · openpyxl · python-docx · Typst · FeOs |
+| Environments | uv (bundled standalone Python, per-project lockfiles) |
+| Quality | cargo test · Clippy · rustfmt · pytest · Ruff · Vitest · Playwright (GUI tests with the real worker) · svelte-check |
+| CI / packaging | GitHub Actions on Windows, macOS (Intel and Apple Silicon) and Linux · NSIS, DMG, .deb and AppImage installers with checksums |
+
+## Scientific correctness
+
+Every model ships with a published check value as a test, and the CF₃I viscosity study is the reference regression
+case. Examples reproduced by the test suite:
+
+- R134a at 300 K and 1 MPa: ρ = 1201.53 kg/m³ (CoolProp reference EoS, in pytest, the RPC test and the GUI test)
+- CF₃I viscosity from NISTIR 8209: 168.5169 μPa·s at 356.8 K and 8.724 mol/L
+- JCGM 100 example H.1 (end-gauge calibration): y = 50.000838 mm, k = 2.92
+- An ECS model exported to CoolProp gives identical values inside CoolProp
+
+## Project layout
+
+```
+crates/   pb-engine, pb-store, pb-cli, pb-plugin, pb-git, pb-term, pb-secrets   (Rust shell)
+worker/   propbench Python package: importers, backends, models, fit, validate, consist, figures, report
+app/      Tauri + Svelte desktop app, GUI tests (e2e/)
+plugins/  plug-in SDK guide and templates (WASM and Python)
+components/  data and model components (registry builder)
+design/   mockups of every screen
+docs/     getting started, concepts, contributing
+```
+
+## Contributing
+
+Contributions are welcome — new models, importers, backends and plug-ins in particular. Open an issue before a large
+change. Every model needs (1) a reference or derivation, (2) at least one published check value as a test, and (3) a
+documented validity range. See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/contributing.md](docs/contributing.md).
+
+## License
+
+[MIT](LICENSE). A software paper is planned after beta 0.1, with the CF₃I viscosity study as its first case study.
+
+---
+
+# Design specification
+
+The rest of this file is the design specification for version 0.1. Code, tests and the contributor guide refer to its
+sections as "README §n".
 
 *Working name. Status: design document for version 0.1 (pre-alpha). Tauri/Rust shell + Python science worker; built by integrating open-source tools (§0).*
-
-PropBench takes a laboratory from **new measurements** to a **validated, documented, exportable property model**,
-on Windows, macOS and Linux, without writing code.
 
 ## 0. Principle: integrate, don't rebuild
 
@@ -440,7 +682,7 @@ previous, Ubuntu LTS, Fedora, Debian) with no developer tools, and must pass: in
 
 ```bash
 # prerequisites: Rust (rustup), Node.js 20+, uv. No system Python is needed: uv downloads a managed Python.
-git clone https://github.com/<org>/propbench.git && cd propbench
+git clone https://github.com/Anawrulkabir/PropBench.git && cd PropBench
 uv sync --project worker               # Python worker environment (worker/.venv) with CoolProp
 uv run --project worker pytest worker  # worker tests
 cargo test --workspace                 # Rust tests, including the end-to-end RPC test

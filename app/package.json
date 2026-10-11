@@ -11,7 +11,8 @@
     "test": "vitest run",
     "bundle-python": "node scripts/bundle-python.mjs",
     "tauri": "tauri",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "screenshots": "playwright test -c playwright.shots.config.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.1",
