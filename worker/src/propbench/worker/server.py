@@ -40,6 +40,37 @@ METHODS: dict[str, Callable[..., dict[str, Any]]] = {
     "study.validate": api.study_validate,
     "selection.lock": api.selection_lock,
     "selection.select": api.selection_select,
+    "consistency.analyze": api.consistency_analyze,
+    "model.references": api.model_references,
+    "model.compare": api.model_compare,
+    "components.list": api.components_list,
+    "components.install": api.components_install,
+    "components.install_file": api.components_install_file,
+    "components.remove": api.components_remove,
+    "components.datasets": api.components_datasets,
+    "env.status": api.env_status,
+    "env.create": api.env_create,
+    "env.install": api.env_install,
+    "env.sync": api.env_sync,
+    "env.run": api.env_run,
+    "worksheet.compute": api.worksheet_compute,
+    "curvefit.fit": api.curvefit_fit,
+    "curvefit.ftest": api.curvefit_ftest,
+    "gum.linear": api.gum_linear,
+    "gum.montecarlo": api.gum_montecarlo,
+    "refs.parse": api.refs_parse,
+    "refs.format": api.refs_format,
+    "refs.doi": api.refs_doi,
+    "figure.render": api.figure_render,
+    "figure.presets": api.figure_presets,
+    "report.render": api.report_render,
+    "model.export_coolprop": api.model_export_coolprop,
+    "assistant.providers": api.assistant_providers,
+    "assistant.ask": api.assistant_ask,
+    "github.device_start": api.github_device_start,
+    "github.device_poll": api.github_device_poll,
+    "github.push": api.github_push,
+    "plugins.run": api.plugins_run,
 }
 
 PARSE_ERROR = -32700
@@ -163,7 +194,7 @@ def _api_method(function: Callable[..., dict[str, Any]]) -> Callable[[Any], dict
             return function(**params)
         except BackendError as exc:
             raise RpcError(BACKEND_ERROR, str(exc)) from exc
-        except (ValueError, FitError, OSError, KeyError) as exc:
+        except (ValueError, FitError, OSError, KeyError, RuntimeError) as exc:
             # every PropBench domain error is a ValueError (DatasetError, ModelError, MappingError, ...)
             raise RpcError(PROPBENCH_ERROR, str(exc)) from exc
 
@@ -200,5 +231,8 @@ def main() -> int:
     os.dup2(2, 1)
     sys.stdout = sys.stderr
     instream = open(sys.stdin.fileno(), encoding="utf-8", newline="\n", closefd=False)  # noqa: SIM115
+    from propbench import components
+
+    components.activate_python()  # pure-Python components installed in the app data folder
     Server().serve(instream, protocol_out)
     return 0

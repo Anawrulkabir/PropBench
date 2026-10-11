@@ -186,3 +186,34 @@ def test_mapping_validation(change, message):
 def test_template_of_another_kind_is_rejected():
     with pytest.raises(MappingError, match="not a version-1"):
         ImportMapping.from_dict({"kind": "something-else", "version": 1})
+
+
+def test_saturated_liquid_data_without_pressure(tmp_path):
+    import CoolProp.CoolProp as CP  # noqa: N817
+
+    from propbench.core import Phase
+    from propbench.importers import ImportMapping, MappingError, import_file
+
+    path = tmp_path / "sat.csv"
+    path.write_text("T [K],eta [uPa s]\n300.0,270.6\n320.0,230.0\n", encoding="utf-8")
+    mapping = ImportMapping.from_dict(
+        {
+            "kind": "propbench.import-mapping",
+            "version": 1,
+            "quantity": "viscosity",
+            "saturation": "liquid",
+            "columns": [
+                {"column": "T [K]", "role": "temperature", "unit": "K"},
+                {"column": "eta [uPa s]", "role": "value", "unit": "uPa*s"},
+            ],
+        }
+    )
+    d = import_file(path, mapping, fluid="R13I1")
+    assert d.pressure[0] == pytest.approx(CP.PropsSI("P", "T", 300.0, "Q", 0, "R13I1"), rel=1e-9)
+    assert d.molar_density[1] == pytest.approx(CP.PropsSI("Dmolar", "T", 320.0, "Q", 0, "R13I1"), rel=1e-9)
+    assert d.phase == (Phase.LIQUID, Phase.LIQUID)
+    assert ImportMapping.from_dict(mapping.to_dict()) == mapping
+    with pytest.raises(MappingError, match="pressure or molar-density"):
+        ImportMapping.from_dict({**mapping.to_dict(), "saturation": None})
+    with pytest.raises(MappingError, match="saturation must be"):
+        ImportMapping.from_dict({**mapping.to_dict(), "saturation": "solid"})

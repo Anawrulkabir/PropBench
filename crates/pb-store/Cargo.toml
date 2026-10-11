@@ -1,0 +1,20 @@
+[package]
+name = "pb-store"
+description = "PropBench project files (SQLite .pbp), snapshots, audit log, atomic saves and the job result cache"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+rusqlite.workspace = true

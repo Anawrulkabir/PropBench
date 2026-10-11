@@ -23,6 +23,7 @@
   let sheet = $state<string | null>(null);
   let headerRow = $state(1);
   let coverage = $state(2);
+  let saturation = $state<"" | "liquid" | "vapor">("");
   let choices = $state<ColumnChoice[]>([]);
   let error = $state<string | null>(null);
   let busy = $state(false);
@@ -89,7 +90,7 @@
     let mapping = null;
     if (!isThermoML) {
       try {
-        mapping = buildMapping(headers, choices, quantity, headerRow, coverage, preview?.sheets.length ? sheet : null);
+        mapping = buildMapping(headers, choices, quantity, headerRow, coverage, preview?.sheets.length ? sheet : null, null, saturation || null);
       } catch (err) {
         error = errorMessage(err);
         return;
@@ -172,6 +173,14 @@
           {/if}
           <label>header row <input class="field num small" type="number" min="1" bind:value={headerRow} onchange={guessAll} /></label>
           <label>coverage factor k <input class="field num small" type="number" min="1" step="0.1" bind:value={coverage} /></label>
+          <label>
+            state
+            <select class="field" bind:value={saturation} title="Saturated data without pressures: p_sat and density from the EoS">
+              <option value="">from the columns</option>
+              <option value="liquid">saturated liquid</option>
+              <option value="vapor">saturated vapour</option>
+            </select>
+          </label>
           <span class="spacer"></span>
           <button class="btn" onclick={guessAll}>Guess again</button>
         </div>

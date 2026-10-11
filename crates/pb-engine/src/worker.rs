@@ -86,6 +86,16 @@ impl Engine {
         worker.call(id, method, &params, limit).await
     }
 
+    /// Cancel whatever the worker is doing: every pending call fails with `EngineError::Cancelled` and the worker
+    /// is stopped. This is not counted as a failure; the next call starts a fresh worker.
+    pub async fn cancel(&self) {
+        let worker = self.worker.lock().await.take();
+        if let Some(worker) = worker {
+            close(&worker.pending, Closed::Cancelled);
+            worker.kill().await;
+        }
+    }
+
     /// Stop the worker: close its stdin so it exits by itself, and kill it if it does not.
     pub async fn shutdown(&self) {
         if let Some(worker) = self.worker.lock().await.take() {
@@ -145,6 +155,7 @@ type Reply = Result<Value, EngineError>;
 enum Closed {
     Exited(String),
     Protocol(String),
+    Cancelled,
 }
 
 impl Closed {
@@ -152,6 +163,7 @@ impl Closed {
         match self {
             Closed::Exited(detail) => EngineError::WorkerExited(detail.clone()),
             Closed::Protocol(detail) => EngineError::Protocol(detail.clone()),
+            Closed::Cancelled => EngineError::Cancelled,
         }
     }
 }

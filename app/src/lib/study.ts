@@ -90,3 +90,74 @@ export function typicalUncertainty(datasets: Dataset[]): number | null {
   const mid = Math.floor(rel.length / 2);
   return rel.length % 2 ? rel[mid] : (rel[mid - 1] + rel[mid]) / 2;
 }
+
+/** The dataset without the points whose ids are in ``masked`` (all arrays filtered alike). */
+export function applyMask(d: Dataset, masked: number[]): Dataset {
+  if (masked.length === 0) return d;
+  const drop = new Set(masked);
+  const keep = d.point_ids.flatMap((id, i) => (drop.has(id) ? [] : [i]));
+  const pick = <T>(a: T[] | null): T[] | null => (a ? keep.map((i) => a[i]) : null);
+  return {
+    ...d,
+    temperature: keep.map((i) => d.temperature[i]),
+    values: keep.map((i) => d.values[i]),
+    pressure: pick(d.pressure),
+    molar_density: pick(d.molar_density),
+    expanded_uncertainty: pick(d.expanded_uncertainty),
+    phase: pick(d.phase),
+    point_ids: keep.map((i) => d.point_ids[i]),
+  };
+}
+
+/** Per-point deviations (held-out or of a reference model) as plot series per dataset, x = temperature. */
+export function pointSeries(
+  datasets: Dataset[],
+  names: string[],
+  pointIds: number[],
+  ard: (number | null)[],
+): { name: string; x: number[]; y: (number | null)[] }[] {
+  const temperatureOf = new Map(datasets.map((d) => [d.name, new Map(d.point_ids.map((id, i) => [id, d.temperature[i]]))]));
+  const groups = new Map<string, { x: number[]; y: (number | null)[] }>();
+  names.forEach((name, i) => {
+    const t = temperatureOf.get(name)?.get(pointIds[i]);
+    if (t === undefined) return;
+    const g = groups.get(name) ?? { x: [], y: [] };
+    g.x.push(t);
+    g.y.push(ard[i]);
+    groups.set(name, g);
+  });
+  return [...groups].map(([name, g]) => ({ name, ...g }));
+}
+
+export interface MeasuredState {
+  temperature: number; // mean, K
+  pressure: number | null; // mean, Pa
+  phase: string;
+  rows: number[]; // indices into the dataset arrays
+  mean: number; // mean value, SI
+  spread: number; // max - min, SI
+}
+
+/** Repeats of one state: points within ``tTol`` K and ``pRel`` relative pressure of a state's first point. */
+export function measuredStates(d: Dataset, tTol = 1.0, pRel = 0.02): MeasuredState[] {
+  const states: MeasuredState[] = [];
+  d.values.forEach((v, i) => {
+    const t = d.temperature[i];
+    const p = d.pressure?.[i] ?? null;
+    const s = states.find((x) => {
+      const t0 = d.temperature[x.rows[0]];
+      const p0 = d.pressure?.[x.rows[0]] ?? null;
+      return Math.abs(t - t0) <= tTol && (p === null || p0 === null || Math.abs(p - p0) <= pRel * p0);
+    });
+    if (s) s.rows.push(i);
+    else states.push({ temperature: t, pressure: p, phase: d.phase?.[i] ?? "", rows: [i], mean: v, spread: 0 });
+  });
+  for (const s of states) {
+    const vals = s.rows.map((i) => d.values[i]);
+    s.temperature = s.rows.reduce((a, i) => a + d.temperature[i], 0) / s.rows.length;
+    s.pressure = d.pressure ? s.rows.reduce((a, i) => a + (d.pressure?.[i] ?? 0), 0) / s.rows.length : null;
+    s.mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    s.spread = Math.max(...vals) - Math.min(...vals);
+  }
+  return states;
+}

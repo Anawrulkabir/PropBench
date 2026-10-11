@@ -1,0 +1,39 @@
+# Template WASM model plug-in (README §2f). Copy this folder, change id/name/entry, implement pb_predict, list your
+# published check values, then `propbench plugin check .` and `propbench plugin sign . --key your.key`.
+id = "sutherland-air"
+name = "Sutherland viscosity of air"
+version = "1.0.0"
+api = 1
+kind = "model"
+runtime = "wasm"
+entry = "sutherland.wat"
+description = "Dilute-gas viscosity of air from Sutherland's law; a template for WASM model plug-ins."
+license = "MIT"
+authors = ["PropBench contributors"]
+reference = "W. Sutherland, Phil. Mag. 36 (1893) 507; constants from F. M. White, Viscous Fluid Flow, 3rd ed. (2006), Table 1-2"
+fluid = "air"
+quantity = "viscosity"
+
+[permissions]
+# nothing beyond computing: no network, no files
+time_s = 5
+memory_mb = 16
+
+# Air at 0.1 MPa: F. P. Incropera et al., Fundamentals of Heat and Mass Transfer, 6th ed. (2007), Table A.4.
+[[check]]
+temperature = 250.0
+expected = 1.596e-5
+rel_tol = 0.01
+source = "Incropera et al. (2007), Table A.4, air, 250 K"
+
+[[check]]
+temperature = 300.0
+expected = 1.846e-5
+rel_tol = 0.01
+source = "Incropera et al. (2007), Table A.4, air, 300 K"
+
+[[check]]
+temperature = 400.0
+expected = 2.301e-5
+rel_tol = 0.01
+source = "Incropera et al. (2007), Table A.4, air, 400 K"

@@ -6,12 +6,15 @@
 
 mod config;
 mod error;
+mod jobs;
 mod methods;
 mod rpc;
 mod worker;
 
-pub use config::{EngineConfig, WorkerCommand, bundled_python, resolve_worker_python};
+pub use config::{EngineConfig, RemoteTarget, WorkerCommand, bundled_python, resolve_worker_python};
 pub use error::EngineError;
+pub use jobs::{Job, JobEvent, JobGraph, JobOutcome, canonical_json, job_key};
 pub use methods::Method;
+pub use pb_store as store;
 pub use rpc::{PROTOCOL_VERSION, PropertyRequest, PropertyResult, WorkerInfo};
 pub use worker::Engine;

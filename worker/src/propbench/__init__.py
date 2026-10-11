@@ -13,7 +13,31 @@ try:
 except PackageNotFoundError:  # pragma: no cover - only when run from a source tree without install
     __version__ = "0.0.0+unknown"
 
-__all__ = ["Backend", "BackendError", "CoolPropBackend", "PropertyResult", "__version__", "property"]
+__all__ = [
+    "Backend",
+    "BackendError",
+    "CoolPropBackend",
+    "PropertyResult",
+    "__version__",
+    "datasets",
+    "fit",
+    "model",
+    "model_kinds",
+    "open",
+    "property",
+    "validate",
+]
+
+_SCRIPTING = {"datasets", "fit", "model", "model_kinds", "open", "validate"}
+
+
+def __getattr__(name: str):
+    """The scripting API (``propbench.script``) is imported on first use, so ``import propbench`` stays fast."""
+    if name in _SCRIPTING:
+        from propbench import script
+
+        return getattr(script, name)
+    raise AttributeError(f"module 'propbench' has no attribute {name!r}")
 
 
 def property(fluid: str, pair: str, values: tuple[float, float], output: str) -> PropertyResult:

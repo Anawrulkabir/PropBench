@@ -40,6 +40,15 @@ export function linearScale(values: (number | null)[], range: [number, number], 
   return { domain, range, map, ticks };
 }
 
+/** Linear scale over a fixed domain (user-set axis range), with nice ticks inside it. */
+export function fixedScale(domain: [number, number], range: [number, number], count = 6): Scale {
+  const [lo, hi] = domain[0] <= domain[1] ? domain : [domain[1], domain[0]];
+  const span = hi - lo || 1;
+  const ticks = niceTicks(lo, hi, count).filter((t) => t >= lo - span * 1e-9 && t <= hi + span * 1e-9);
+  const map = (v: number) => range[0] + ((v - lo) / span) * (range[1] - range[0]);
+  return { domain: [lo, hi], range, map, ticks };
+}
+
 /** Short tick label: no trailing zeros, exponent notation for very large or small magnitudes. */
 export function tickLabel(v: number): string {
   if (v === 0) return "0";
@@ -59,6 +68,8 @@ export interface Series {
   color?: string;
   shape?: Shape;
   open?: boolean;
+  /** Symmetric error bar half-widths (same units as y), e.g. expanded uncertainties. */
+  err?: (number | null)[];
 }
 
 export interface Line {
@@ -67,4 +78,13 @@ export interface Line {
   y: (number | null)[];
   color?: string;
   dashed?: boolean;
+}
+
+/** A model isobar crossing the saturation curve jumps between liquid and vapour values: leave a gap there, not a
+ * vertical line (a relative step above ``maxStep`` between neighbouring grid points ends the line segment). */
+export function breakAtPhaseChange(y: (number | null)[], maxStep = 0.3): (number | null)[] {
+  return y.map((v, i) => {
+    const prev = y[i - 1];
+    return v !== null && prev !== null && prev !== undefined && Math.abs(v - prev) / Math.abs(prev) > maxStep ? null : v;
+  });
 }

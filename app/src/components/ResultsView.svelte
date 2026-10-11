@@ -46,6 +46,37 @@
     <button class="btn" onclick={() => (project.view = "study")}>Study setup</button>
   </div>
 
+  <fieldset class="group">
+    <legend>Comparison with reference models (AARD %, bias %)</legend>
+    {#if project.comparison}
+      {@const cmp = project.comparison}
+      {@const names = [...new Set(cmp.rows.map((r) => r.dataset))]}
+      <div class="well">
+        <table class="grid">
+          <thead><tr><th>Model</th>{#each names as d (d)}<th>{d}</th>{/each}</tr></thead>
+          <tbody>
+            {#each cmp.models as m (m)}
+              <tr>
+                <td class:bold={project.selection?.chosen === m}>{m}</td>
+                {#each names as d (d)}
+                  {@const r = cmp.rows.find((x) => x.model === m && x.dataset === d)}
+                  <td class="num">
+                    {#if r}{pct(r.deviations.aard)} / {r.deviations.bias !== null && r.deviations.bias >= 0 ? "+" : ""}{pct(r.deviations.bias)}{r.not_evaluated ? ` (${r.not_evaluated} n/a)` : ""}{:else}–{/if}
+                  </td>
+                {/each}
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
+    <div class="row">
+      <span class="muted">Fitted candidates side by side with the reference models available for the fluid (published registry, CoolProp correlations).</span>
+      <span class="spacer"></span>
+      <button class="btn" onclick={() => project.compareModels()} disabled={!!project.busy || !project.datasets.length}>Compare</button>
+    </div>
+  </fieldset>
+
   {#if !project.candidates.some((c) => c.study)}
     <div class="empty well">No validation results yet — set up and run a study.</div>
   {:else}

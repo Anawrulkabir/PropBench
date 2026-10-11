@@ -66,11 +66,66 @@ export type WorkerMethod =
   | "model.fit"
   | "study.validate"
   | "selection.lock"
-  | "selection.select";
+  | "selection.select"
+  | "consistency.analyze"
+  | "model.references"
+  | "model.compare"
+  | "components.list"
+  | "components.install"
+  | "components.install_file"
+  | "components.remove"
+  | "components.datasets"
+  | "env.status"
+  | "env.create"
+  | "env.install"
+  | "env.sync"
+  | "env.run"
+  | "worksheet.compute"
+  | "curvefit.fit"
+  | "curvefit.ftest"
+  | "gum.linear"
+  | "gum.montecarlo"
+  | "refs.parse"
+  | "refs.format"
+  | "refs.doi"
+  | "figure.render"
+  | "figure.presets"
+  | "report.render"
+  | "model.export_coolprop";
 
 /** Run one worker operation through the `worker` Tauri command → pb-engine → Python worker. */
 export function worker<T>(method: WorkerMethod, params: object = {}): Promise<T> {
-  return invoke<T>("worker", { method, params });
+  return invoke<T>("worker", { method, params, target: runOn.target });
+}
+
+/** Where computations run: "local", or "remote" (the engine connected over SSH; the shell keeps file operations
+ * local and sends only computations there). */
+export const runOn: { target: "local" | "remote"; host: string } = { target: "local", host: "" };
+
+export interface RemoteTarget {
+  host: string;
+  user: string | null;
+  port: number | null;
+  identity: string | null;
+  python: string;
+}
+
+export function remoteConnect(target: RemoteTarget): Promise<{ protocol: number; propbench: string; python: string; coolprop: string }> {
+  return invoke("remote_connect", { target });
+}
+
+export function remoteDisconnect(): Promise<void> {
+  return invoke("remote_disconnect");
+}
+
+/** Stop the running worker operation; pending calls fail with kind "cancelled". */
+export function cancelWorker(): Promise<void> {
+  return invoke<void>("cancel");
+}
+
+/** True inside the desktop app (Tauri), false in a plain browser (e.g. UI tests). */
+export function inTauri(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
 /** Base64 of a file's bytes, to send a picked file to the worker without a filesystem path. */

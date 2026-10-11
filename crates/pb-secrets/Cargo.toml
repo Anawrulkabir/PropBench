@@ -1,0 +1,21 @@
+[package]
+name = "pb-secrets"
+description = "PropBench credentials (AI keys, GitHub tokens) in the operating system's keychain, never in files"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+[target.'cfg(not(any(target_os = "macos", target_os = "windows")))'.dependencies]
+keyring = { version = "3", features = ["async-secret-service", "tokio", "crypto-rust"] }
+
+[lints]
+workspace = true

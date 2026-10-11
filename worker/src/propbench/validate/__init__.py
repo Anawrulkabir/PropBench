@@ -20,9 +20,9 @@ from propbench.validate.selection import (
     information_criteria,
     select,
 )
-from propbench.validate.splits import Fold, SplitError, bootstrap, kfold, loso, loto
+from propbench.validate.splits import Fold, SplitError, bootstrap, kfold, loso, lostate, loto, state_groups
 
-SPLITS = {"loso": loso, "loto": loto, "kfold": kfold, "bootstrap": bootstrap}
+SPLITS = {"lostate": lostate, "loso": loso, "loto": loto, "kfold": kfold, "bootstrap": bootstrap}
 
 __all__ = [
     "METRICS",
@@ -46,8 +46,10 @@ __all__ = [
     "information_criteria",
     "kfold",
     "loso",
+    "lostate",
     "loto",
     "physics_checks",
     "select",
     "state_grid",
+    "state_groups",
 ]

@@ -1,0 +1,10 @@
+{
+  "id": "cf3i-viscosity-data",
+  "name": "CF3I viscosity: published data",
+  "version": "1.0.0",
+  "kind": "data",
+  "category": "Experimental data",
+  "description": "Published CF3I (R13I1) viscosity: Tuhin et al. 2024 Tables 2 and 3 (45 points) and Duan et al. 1999 saturated liquid (18 points)",
+  "license": "Published values with citation (see SOURCE.md)",
+  "source": "Tuhin et al., Int. J. Thermophys. 45:41 (2024), doi:10.1007/s10765-024-03332-4; Duan et al., Fluid Phase Equilib. 162:303 (1999), doi:10.1016/S0378-3812(99)00216-2"
+}

@@ -64,7 +64,9 @@ class ImportMapping:
     """How to read one table into a dataset of ``quantity``.
 
     ``header_row`` and ``first_data_row`` are 1-based file rows (as shown in a spreadsheet). A units row between the
-    header and the data (Origin style) is skipped by setting ``first_data_row``.
+    header and the data (Origin style) is skipped by setting ``first_data_row``. ``saturation`` ("liquid" or "vapor")
+    marks saturated-state data without pressures (e.g. saturated-liquid viscosity): the saturation pressure and
+    density then come from the equation of state at each temperature.
     """
 
     quantity: Quantity
@@ -75,6 +77,7 @@ class ImportMapping:
     sheet: str | None = None
     decimal_comma: bool = False
     delimiter: str | None = None
+    saturation: str | None = None
     notes: str | None = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
@@ -96,10 +99,13 @@ class ImportMapping:
         for required in (Role.TEMPERATURE, Role.VALUE):
             if required not in roles:
                 raise MappingError(f"no column has the role '{required.value}'")
+        if self.saturation not in (None, "liquid", "vapor"):
+            raise MappingError("saturation must be 'liquid', 'vapor' or empty")
         if (
             Role.PRESSURE not in roles
             and Role.MOLAR_DENSITY not in roles
             and self.quantity is not Quantity.VAPOR_PRESSURE
+            and self.saturation is None
         ):
             raise MappingError("map a pressure or molar-density column to define the state of each point")
         for spec in self.columns:

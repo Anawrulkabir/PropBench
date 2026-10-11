@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { buildMapping, guessColumn } from "./mapping";
-import { linearScale, niceTicks, tickLabel } from "./plot";
+import { breakAtPhaseChange, fixedScale, linearScale, niceTicks, tickLabel } from "./plot";
 import { display, fmt, pct, withError } from "./quantities";
 import {
+  applyMask,
+  pointSeries,
   type Candidate,
   candidateMetrics,
   commonTarget,
@@ -71,6 +73,7 @@ describe("buildMapping", () => {
   it("explains what is missing", () => {
     const noState = choices.map((c) => ({ ...c, role: c.role === "pressure" ? "ignore" : c.role })) as never;
     expect(() => buildMapping(headers, noState, "viscosity", 1, 2, null)).toThrow(/pressure or molar-density/);
+    expect(buildMapping(headers, noState, "viscosity", 1, 2, null, null, "liquid").saturation).toBe("liquid");
     const twice = choices.map((c) => ({ ...c, role: c.role === "pressure" ? "temperature" : c.role })) as never;
     expect(() => buildMapping(headers, twice, "viscosity", 1, 2, null)).toThrow(/Two columns/);
     const noValue = choices.map((c) => ({ ...c, role: c.role === "value" ? "ignore" : c.role })) as never;
@@ -226,5 +229,71 @@ describe("study helpers", () => {
   it("finds the median relative expanded uncertainty", () => {
     expect(typicalUncertainty([dataset("a", [100, 200, 400], [1, 4, 12])])).toBeCloseTo(2, 12);
     expect(typicalUncertainty([dataset("a", [1], null)])).toBeNull();
+  });
+});
+
+describe("masking", () => {
+  it("drops masked points from every array and keeps their ids", () => {
+    const d = dataset("a", [1, 2, 3], [0.1, 0.2, 0.3]);
+    const m = applyMask(d, [1]);
+    expect(m.point_ids).toEqual([0, 2]);
+    expect(m.values).toEqual([1, 3]);
+    expect(m.temperature).toEqual([300, 302]);
+    expect(m.pressure).toEqual([1e6, 1e6]);
+    expect(m.expanded_uncertainty).toEqual([0.1, 0.3]);
+    expect(m.molar_density).toBeNull();
+    expect(applyMask(d, [])).toBe(d);
+    expect(applyMask(d, [0, 1, 2]).values).toEqual([]);
+  });
+});
+
+describe("pointSeries", () => {
+  it("maps point ids to temperatures and groups by dataset", () => {
+    const a = dataset("a", [1, 2, 3], null);
+    const b = dataset("b", [5], null);
+    expect(pointSeries([a, b], ["a", "b", "a", "x"], [2, 0, 0, 0], [0.1, -0.2, 0.3, 9])).toEqual([
+      { name: "a", x: [302, 300], y: [0.1, 0.3] },
+      { name: "b", x: [300], y: [-0.2] },
+    ]);
+  });
+});
+
+describe("graph helpers", () => {
+  it("breaks an isobar at the liquid-vapour jump", () => {
+    expect(breakAtPhaseChange([200, 190, 180, 20, 21, null, 22])).toEqual([200, 190, 180, null, 21, null, 22]);
+  });
+
+  it("keeps a user-set axis range", () => {
+    const s = fixedScale([250, 400], [0, 100]);
+    expect(s.domain).toEqual([250, 400]);
+    expect(s.map(325)).toBe(50);
+    expect(s.ticks[0]).toBeGreaterThanOrEqual(250);
+    expect(s.ticks[s.ticks.length - 1]).toBeLessThanOrEqual(400);
+  });
+});
+
+describe("turbo colour map", () => {
+  it("runs from dark blue through green to dark red and clamps", async () => {
+    const { turbo } = await import("./surface");
+    expect(turbo(0)).toBe("rgb(35, 23, 27)");
+    expect(turbo(-1)).toBe(turbo(0));
+    expect(turbo(2)).toBe(turbo(1));
+    const mid = turbo(0.5).match(/\d+/g)?.map(Number) ?? [];
+    expect(mid[1]).toBeGreaterThan(mid[0]);
+    expect(mid[1]).toBeGreaterThan(mid[2]);
+  });
+});
+
+describe("measuredStates", () => {
+  it("groups repeats by temperature and pressure", async () => {
+    const { measuredStates } = await import("./study");
+    const d = dataset("lab", [208.82, 208.67, 209.69, 203.71], null);
+    d.temperature = [332.96, 332.97, 332.85, 332.83];
+    d.pressure = [3.999e6, 3.999e6, 4.002e6, 3.0e6];
+    const states = measuredStates(d);
+    expect(states.map((s) => s.rows)).toEqual([[0, 1, 2], [3]]);
+    expect(states[0].mean).toBeCloseTo((208.82 + 208.67 + 209.69) / 3, 10);
+    expect(states[0].spread).toBeCloseTo(1.02, 10);
+    expect(states[0].temperature).toBeCloseTo(332.9267, 4);
   });
 });

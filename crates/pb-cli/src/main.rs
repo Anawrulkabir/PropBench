@@ -17,6 +17,15 @@ struct Cli {
     /// Python interpreter that runs the worker (default: $PB_WORKER_PYTHON, then the development environment).
     #[arg(long, global = true)]
     python: Option<PathBuf>,
+    /// Folder of installed components (default: $PB_COMPONENTS_DIR).
+    #[arg(long, global = true)]
+    components_dir: Option<PathBuf>,
+    /// Folder of installed plug-ins (default: $PB_PLUGINS_DIR).
+    #[arg(long, global = true)]
+    plugins_dir: Option<PathBuf>,
+    /// Folder of project environments (default: $PB_ENVS_DIR).
+    #[arg(long, global = true)]
+    envs_dir: Option<PathBuf>,
     /// Write the JSON result to this file instead of standard output.
     #[arg(long, short, global = true)]
     output_file: Option<PathBuf>,
@@ -84,7 +93,7 @@ enum Command {
         #[arg(long)]
         options: Option<String>,
     },
-    /// Cross-validate a model (loso, loto, kfold, bootstrap) and run the physics checks.
+    /// Cross-validate a model (lostate = leave one state out, loso = leave one source out, loto, kfold, bootstrap) and run the physics checks.
     Validate {
         #[arg(long)]
         model: PathBuf,
@@ -104,12 +113,572 @@ enum Command {
         #[arg(long, default_value_t = 1)]
         workers: u32,
     },
+    /// Consistency of datasets: overlaps, model-free checks at equal T, offsets, z-scores (against reference
+    /// models and the given model specs).
+    Consistency {
+        #[arg(long)]
+        data: PathBuf,
+        /// Model spec files to compare with, each as NAME=FILE (repeatable).
+        #[arg(long = "model")]
+        models: Vec<String>,
+        /// Leave out the reference models (published registry, CoolProp correlations).
+        #[arg(long)]
+        no_references: bool,
+        /// Isotherm tolerance in K.
+        #[arg(long, default_value_t = 1.0)]
+        t_tol: f64,
+    },
+    /// Deviation statistics of models (reference models and the given model specs) on every dataset.
+    Compare {
+        #[arg(long)]
+        data: PathBuf,
+        /// Model spec files, each as NAME=FILE (repeatable).
+        #[arg(long = "model")]
+        models: Vec<String>,
+        #[arg(long)]
+        no_references: bool,
+    },
+    /// Render a publication figure from a figure spec (JSON, see propbench.figures) to a file.
+    Figure {
+        spec: PathBuf,
+        /// Output file; the format follows its extension (svg, pdf, eps, png, tiff).
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long, default_value_t = 600)]
+        dpi: u32,
+    },
+    /// Write a report (pdf, docx, md, or zip bundle by the extension of --out) from a report spec (JSON).
+    Report {
+        spec: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Export a fitted model to a CoolProp fluid file, verified inside CoolProp (at the datasets' states if given).
+    ExportCoolprop {
+        model: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long)]
+        data: Option<PathBuf>,
+    },
+    /// Project history (a Git mirror of a .pbp project; no Git installation needed).
+    History {
+        #[command(subcommand)]
+        action: HistoryAction,
+    },
+    /// Credentials in the OS keychain (`ai.<provider>`, `github.token`); `set` reads the value from stdin.
+    Secret {
+        #[command(subcommand)]
+        action: SecretAction,
+    },
+    /// Ask the AI assistant (key from the OS keychain); prints the reply and its proposals, applies nothing.
+    Assistant {
+        #[arg(long)]
+        provider: String,
+        #[arg(long)]
+        model: String,
+        #[arg(long)]
+        base_url: Option<String>,
+        question: String,
+    },
+    /// Plug-ins: author tools (keygen, sign, check) and the installed plug-ins (install, approve, run, ...).
+    Plugin {
+        #[command(subcommand)]
+        action: PluginAction,
+    },
+    /// Components: list (registry and installed), install by id or from an archive file, remove.
+    Components {
+        #[command(subcommand)]
+        action: ComponentsAction,
+    },
+    /// Project environments: status, create, install packages, sync from a lock, run a script with limits.
+    Env {
+        #[command(subcommand)]
+        action: EnvAction,
+    },
+    /// Project files (.pbp): create, inspect, add datasets, snapshot, export to and import from JSON.
+    Project {
+        #[command(subcommand)]
+        action: ProjectAction,
+    },
     /// Any worker operation by name with JSON params, e.g. `call selection.lock '{"rule": {...}}'`.
     Call {
         method: String,
         #[arg(default_value = "{}")]
         params: String,
     },
+}
+
+#[derive(Subcommand)]
+enum HistoryAction {
+    /// Commit the project's mirror into `<project>.history` next to the file.
+    Commit {
+        file: PathBuf,
+        #[arg(long, short)]
+        message: String,
+    },
+    /// Commits, newest first.
+    Log { file: PathBuf },
+}
+
+#[derive(Subcommand)]
+enum SecretAction {
+    Set { name: String },
+    Has { name: String },
+    Delete { name: String },
+}
+
+#[derive(Subcommand)]
+enum PluginAction {
+    /// New minisign key pair for signing plug-ins: writes <name>.pub and <name>.key (keep the .key private).
+    Keygen {
+        name: PathBuf,
+    },
+    /// Write SHA256SUMS (and with --key, plugin.minisig) for a plug-in folder.
+    Sign {
+        dir: PathBuf,
+        #[arg(long)]
+        key: Option<PathBuf>,
+    },
+    /// Check-value harness of a WASM model plug-in folder (Python plug-ins: `plugin python <id> --method check`).
+    Check {
+        dir: PathBuf,
+    },
+    /// Verify a plug-in folder (manifest, files, signature) and show its permissions; installs nothing.
+    Inspect {
+        dir: PathBuf,
+    },
+    /// Copy a verified plug-in into the plug-ins folder. It runs only after `approve`.
+    Install {
+        dir: PathBuf,
+    },
+    /// Approve the declared permissions of an installed plug-in (the digest shown by `install` or `list`).
+    Approve {
+        id: String,
+        #[arg(long)]
+        digest: String,
+        /// Approve an unsigned package (local development).
+        #[arg(long)]
+        allow_unsigned: bool,
+    },
+    Revoke {
+        id: String,
+    },
+    Remove {
+        id: String,
+    },
+    List,
+    /// Trust a minisign public key (file) for plug-in signatures.
+    Trust {
+        key: PathBuf,
+    },
+    /// Evaluate an approved WASM model plug-in at T (K) and molar density (mol/m³) pairs: --state 300,0.
+    Predict {
+        id: String,
+        #[arg(long = "state", value_delimiter = ';')]
+        states: Vec<String>,
+    },
+    /// Run an approved WASM tool plug-in: standard input is passed to it.
+    Run {
+        id: String,
+        #[arg(long)]
+        project_dir: Option<PathBuf>,
+        args: Vec<String>,
+    },
+    /// Run an approved Python plug-in in a project environment (method predict, check, info or run).
+    Python {
+        id: String,
+        #[arg(long, default_value = "check")]
+        method: String,
+        #[arg(long, default_value = "{}")]
+        params: String,
+        #[arg(long, default_value = "plugins")]
+        env: String,
+        #[arg(long)]
+        project_dir: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ComponentsAction {
+    /// Installed components, the registry's components and updates.
+    List {
+        /// Registry URL or path (default: $PB_REGISTRY_URL, then the PropBench registry).
+        #[arg(long)]
+        registry: Option<String>,
+    },
+    /// Download, verify and install a component (and what it requires).
+    Install {
+        id: String,
+        #[arg(long)]
+        registry: Option<String>,
+    },
+    /// Install a component archive without network (offline installer).
+    InstallFile {
+        archive: PathBuf,
+    },
+    Remove {
+        id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum EnvAction {
+    Status {
+        project: String,
+    },
+    Create {
+        project: String,
+    },
+    Install {
+        project: String,
+        packages: Vec<String>,
+    },
+    /// Make the environment match a lock file (`name==version` lines).
+    Sync {
+        project: String,
+        lock: PathBuf,
+    },
+    /// Run a Python script in the environment (separate process, time and memory limits).
+    Run {
+        project: String,
+        script: PathBuf,
+        #[arg(long, default_value_t = 600.0)]
+        timeout: f64,
+        #[arg(long, default_value_t = 4096)]
+        memory_mb: u64,
+    },
+}
+
+#[derive(Subcommand)]
+enum ProjectAction {
+    /// Create an empty project file.
+    New {
+        file: PathBuf,
+        #[arg(long, default_value = "Untitled project")]
+        name: String,
+    },
+    /// Name, dates, datasets, documents, snapshots and the audit log, as JSON.
+    Info { file: PathBuf },
+    /// Add datasets (a JSON list, or the output of `import`) to a project.
+    AddDatasets {
+        file: PathBuf,
+        #[arg(long)]
+        data: PathBuf,
+    },
+    /// Store the current datasets and documents as a named snapshot.
+    Snapshot {
+        file: PathBuf,
+        #[arg(long)]
+        label: String,
+    },
+    /// The whole project as JSON (the same content the app saves).
+    Export { file: PathBuf },
+    /// Write a project file from JSON produced by `export` (atomic).
+    Import { json: PathBuf, file: PathBuf },
+}
+
+fn history_dir(file: &Path) -> PathBuf {
+    let stem = file
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "project".into());
+    file.with_file_name(format!("{stem}.history"))
+}
+
+fn local_action(command: &Command) -> Option<Result<Value, EngineError>> {
+    let git = |e: pb_git::GitError| invalid(e.to_string());
+    let secret = |e: pb_secrets::SecretError| invalid(e.to_string());
+    match command {
+        Command::History {
+            action: HistoryAction::Commit { file, message },
+        } => Some((|| {
+            let project = pb_engine::store::Project::load(file).map_err(store_error)?;
+            let done = pb_git::commit(
+                &history_dir(file),
+                &project,
+                message,
+                "PropBench user",
+                "propbench@localhost",
+            )
+            .map_err(git)?;
+            Ok(serde_json::to_value(done).unwrap_or(Value::Null))
+        })()),
+        Command::History {
+            action: HistoryAction::Log { file },
+        } => Some(
+            pb_git::history(&history_dir(file), 200)
+                .map_err(git)
+                .map(|h| serde_json::to_value(h).unwrap_or(Value::Null)),
+        ),
+        Command::Secret { action } => Some((|| match action {
+            SecretAction::Set { name } => {
+                let mut value = String::new();
+                std::io::stdin().read_line(&mut value)?;
+                pb_secrets::set(name, value.trim()).map_err(secret)?;
+                Ok(json!({ "stored": name }))
+            }
+            SecretAction::Has { name } => Ok(json!({ "name": name, "stored": pb_secrets::has(name).map_err(secret)? })),
+            SecretAction::Delete { name } => {
+                pb_secrets::delete(name).map_err(secret)?;
+                Ok(json!({ "deleted": name }))
+            }
+        })()),
+        _ => None,
+    }
+}
+
+fn plugin_host(dir: Option<&PathBuf>) -> Result<pb_plugin::PluginHost, EngineError> {
+    dir.cloned()
+        .or_else(|| std::env::var_os("PB_PLUGINS_DIR").map(PathBuf::from))
+        .map(pb_plugin::PluginHost::new)
+        .ok_or_else(|| invalid("set --plugins-dir or PB_PLUGINS_DIR"))
+}
+
+fn to_json(value: impl serde::Serialize) -> Value {
+    serde_json::to_value(value).unwrap_or(Value::Null)
+}
+
+/// Plug-in actions that need no worker (everything but running Python plug-ins).
+fn plugin_action(action: &PluginAction, dir: Option<&PathBuf>) -> Option<Result<Value, EngineError>> {
+    use pb_plugin::package;
+    let err = |e: pb_plugin::PluginError| invalid(e.to_string());
+    let inspected = |p: pb_plugin::Package| {
+        json!({
+            "id": p.manifest.id, "version": p.manifest.version, "digest": p.digest, "signer": to_json(&p.signer),
+            "permissions": p.manifest.permissions.describe(), "dir": p.dir,
+        })
+    };
+    let result = (|| match action {
+        PluginAction::Python { .. } => Ok(Value::Null),
+        PluginAction::Keygen { name } => {
+            let (pk, sk) = package::generate_keypair().map_err(err)?;
+            let (pub_path, key_path) = (name.with_extension("pub"), name.with_extension("key"));
+            if key_path.exists() {
+                return Err(invalid(format!("{} exists; not overwritten", key_path.display())));
+            }
+            std::fs::write(&pub_path, pk)?;
+            std::fs::write(&key_path, sk)?;
+            Ok(json!({ "public_key": pub_path, "secret_key": key_path }))
+        }
+        PluginAction::Sign { dir, key } => {
+            let key = match key {
+                Some(path) => Some(package::secret_key(&std::fs::read_to_string(path)?).map_err(err)?),
+                None => None,
+            };
+            let digest = package::sign(dir, key.as_ref()).map_err(err)?;
+            Ok(json!({ "digest": digest, "signed": key.is_some() }))
+        }
+        PluginAction::Check { dir: src } => {
+            // the harness does not depend on who signed the package; any plug-ins folder will do
+            let host = plugin_host(dir).unwrap_or_else(|_| pb_plugin::PluginHost::new(std::env::temp_dir()));
+            let results = host.check(src).map_err(err)?;
+            let verified = !results.is_empty() && results.iter().all(|r| r.pass);
+            Ok(json!({ "verified": verified, "results": to_json(results) }))
+        }
+        PluginAction::Inspect { dir: src } => Ok(inspected(plugin_host(dir)?.inspect(src).map_err(err)?)),
+        PluginAction::Install { dir: src } => Ok(inspected(plugin_host(dir)?.install(src).map_err(err)?)),
+        PluginAction::Approve {
+            id,
+            digest,
+            allow_unsigned,
+        } => Ok(to_json(
+            plugin_host(dir)?.approve(id, digest, *allow_unsigned).map_err(err)?,
+        )),
+        PluginAction::Revoke { id } => {
+            plugin_host(dir)?.revoke(id).map_err(err)?;
+            Ok(json!({ "revoked": id }))
+        }
+        PluginAction::Remove { id } => {
+            plugin_host(dir)?.remove(id).map_err(err)?;
+            Ok(json!({ "removed": id }))
+        }
+        PluginAction::List => Ok(to_json(plugin_host(dir)?.list().map_err(err)?)),
+        PluginAction::Trust { key } => {
+            Ok(json!({ "trusted": plugin_host(dir)?.trust_key(&std::fs::read_to_string(key)?).map_err(err)? }))
+        }
+        PluginAction::Predict { id, states } => {
+            let states = states
+                .iter()
+                .map(|s| {
+                    let v: Vec<f64> = s.split(',').filter_map(|x| x.trim().parse().ok()).collect();
+                    match v[..] {
+                        [t, rho] => Ok((t, rho)),
+                        _ => Err(invalid(format!("state {s:?}: expected T,rho"))),
+                    }
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let values = plugin_host(dir)?.predict(id, &states).map_err(err)?;
+            Ok(json!({ "values": values }))
+        }
+        PluginAction::Run { id, project_dir, args } => {
+            let mut input = vec![];
+            std::io::Read::read_to_end(&mut std::io::stdin(), &mut input)?;
+            Ok(to_json(
+                plugin_host(dir)?
+                    .run(id, project_dir.as_deref(), &input, args)
+                    .map_err(err)?,
+            ))
+        }
+    })();
+    match action {
+        PluginAction::Python { .. } => None,
+        _ => Some(result),
+    }
+}
+
+/// The request for an approved Python plug-in, after the package and approval checks of `pb-plugin`.
+fn python_request(
+    dir: Option<&PathBuf>,
+    id: &str,
+    method: &str,
+    params: &str,
+    project_dir: Option<&Path>,
+) -> Result<Value, EngineError> {
+    let params: Value = serde_json::from_str(params).map_err(|e| invalid(format!("--params: {e}")))?;
+    plugin_host(dir)?
+        .python_request(id, project_dir, method, params)
+        .map_err(|e| invalid(e.to_string()))
+}
+
+fn store_error(err: pb_engine::store::StoreError) -> EngineError {
+    invalid(err.to_string())
+}
+
+fn project_action(action: ProjectAction) -> Result<Value, EngineError> {
+    use pb_engine::store::{DatasetRecord, Project, now_seconds};
+    let save = |mut project: Project, file: &Path| -> Result<Project, EngineError> {
+        project.meta.modified = now_seconds();
+        project.meta.app_version = env!("CARGO_PKG_VERSION").into();
+        project.save(file).map_err(store_error)?;
+        Ok(project)
+    };
+    let to_json = |v: &Project| serde_json::to_value(v).map_err(|e| EngineError::Protocol(e.to_string()));
+    match action {
+        ProjectAction::New { file, name } => {
+            let mut project = Project::new(&name);
+            project.log("create", &name);
+            let project = save(project, &file)?;
+            Ok(json!({"created": path_string(&file)?, "meta": to_json(&project)?["meta"]}))
+        }
+        ProjectAction::Info { file } => {
+            let p = Project::load(&file).map_err(store_error)?;
+            let datasets: Vec<Value> = p
+                .datasets
+                .iter()
+                .map(|d| {
+                    let n = d.data.get("values").and_then(Value::as_array).map_or(0, Vec::len);
+                    json!({"name": d.name, "fluid": d.data.get("fluid"), "quantity": d.data.get("quantity"), "points": n})
+                })
+                .collect();
+            let snapshots: Vec<Value> = p
+                .snapshots
+                .iter()
+                .map(|s| json!({"id": s.id, "label": s.label, "created": s.created}))
+                .collect();
+            Ok(json!({
+                "meta": to_json(&p)?["meta"], "datasets": datasets,
+                "documents": p.documents.keys().collect::<Vec<_>>(), "snapshots": snapshots, "audit": p.audit,
+            }))
+        }
+        ProjectAction::AddDatasets { file, data } => {
+            let mut p = Project::load(&file).map_err(store_error)?;
+            let Value::Array(list) = read_datasets(&data)? else {
+                return Err(invalid("expected a list of datasets"));
+            };
+            let mut added = Vec::new();
+            for d in list {
+                let name = d
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| invalid("a dataset has no name"))?
+                    .to_owned();
+                p.datasets.retain(|x| x.name != name);
+                p.datasets.push(DatasetRecord {
+                    name: name.clone(),
+                    data: d,
+                });
+                added.push(name);
+            }
+            p.log("import", &added.join(", "));
+            save(p, &file)?;
+            Ok(json!({"added": added}))
+        }
+        ProjectAction::Snapshot { file, label } => {
+            let mut p = Project::load(&file).map_err(store_error)?;
+            let id = p.snapshot(&label);
+            save(p, &file)?;
+            Ok(json!({"snapshot": id, "label": label}))
+        }
+        ProjectAction::Export { file } => to_json(&Project::load(&file).map_err(store_error)?),
+        ProjectAction::Import { json: source, file } => {
+            let project: Project = serde_json::from_value(read_json(&source)?)
+                .map_err(|e| invalid(format!("{}: not a project: {e}", source.display())))?;
+            save(project, &file)?;
+            Ok(json!({"written": path_string(&file)?}))
+        }
+    }
+}
+
+/// Standard base64 (RFC 4648) of `bytes`, to send a file to the worker inside JSON.
+fn base64(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(char::from(TABLE[((n >> (18 - 6 * i)) & 63) as usize]));
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
+
+/// Write the `content_base64` of a worker result to `out`.
+fn write_content(result: &Value, out: &Path) -> Result<Value, EngineError> {
+    let content = result
+        .get("content_base64")
+        .and_then(Value::as_str)
+        .ok_or_else(|| EngineError::Protocol("the worker returned no content".into()))?;
+    let bytes = base64_decode(content).ok_or_else(|| EngineError::Protocol("content is not base64".into()))?;
+    std::fs::write(out, &bytes)?;
+    Ok(json!({ "written": path_string(out)?, "bytes": bytes.len(), "format": result.get("format") }))
+}
+
+/// Decode standard base64 (with padding); `None` for invalid input.
+fn base64_decode(text: &str) -> Option<Vec<u8>> {
+    let value = |c: u8| -> Option<u32> {
+        match c {
+            b'A'..=b'Z' => Some(u32::from(c - b'A')),
+            b'a'..=b'z' => Some(u32::from(c - b'a') + 26),
+            b'0'..=b'9' => Some(u32::from(c - b'0') + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    };
+    let bytes: Vec<u8> = text.bytes().filter(|b| !b.is_ascii_whitespace()).collect();
+    if !bytes.len().is_multiple_of(4) {
+        return None;
+    }
+    let mut out = Vec::with_capacity(bytes.len() / 4 * 3);
+    for chunk in bytes.chunks(4) {
+        let pad = chunk.iter().rev().take_while(|&&b| b == b'=').count();
+        let mut n = 0u32;
+        for &b in &chunk[..4 - pad] {
+            n = (n << 6) | value(b)?;
+        }
+        n <<= 6 * pad as u32;
+        let decoded = [(n >> 16) as u8, (n >> 8) as u8, n as u8];
+        out.extend_from_slice(&decoded[..3 - pad]);
+    }
+    Some(out)
 }
 
 fn invalid(message: impl Into<String>) -> EngineError {
@@ -149,6 +718,18 @@ fn read_model(path: &Path) -> Result<Value, EngineError> {
     })
 }
 
+/// `NAME=FILE` model arguments as `[{name, model}]` (the file holds a spec or a fit/model output).
+fn named_models(args: &[String]) -> Result<Value, EngineError> {
+    let mut list = Vec::new();
+    for arg in args {
+        let (name, file) = arg
+            .split_once('=')
+            .ok_or_else(|| invalid(format!("--model expects NAME=FILE, got `{arg}`")))?;
+        list.push(json!({"name": name, "model": read_model(Path::new(file))?}));
+    }
+    Ok(Value::Array(list))
+}
+
 fn path_string(path: &Path) -> Result<String, EngineError> {
     path.to_str()
         .map(str::to_owned)
@@ -171,13 +752,52 @@ async fn main() -> ExitCode {
 }
 
 async fn run(cli: Cli) -> Result<String, EngineError> {
-    let python = match cli.python {
-        Some(path) => path,
-        None => resolve_worker_python(None)?,
+    let result = match cli.command {
+        // Project files, history and credentials need no worker.
+        Command::Project { action } => project_action(action),
+        command @ (Command::History { .. } | Command::Secret { .. }) => {
+            local_action(&command).unwrap_or(Ok(Value::Null))
+        }
+        Command::Plugin { action } if !matches!(action, PluginAction::Python { .. }) => {
+            plugin_action(&action, cli.plugins_dir.as_ref()).unwrap_or(Ok(Value::Null))
+        }
+        command => {
+            let python = match cli.python {
+                Some(path) => path,
+                None => resolve_worker_python(None)?,
+            };
+            let mut worker = WorkerCommand::python_worker(python);
+            if let Some(dir) = cli.components_dir {
+                worker = worker.with_env("PB_COMPONENTS_DIR", dir);
+            }
+            if let Some(dir) = cli.envs_dir {
+                worker = worker.with_env("PB_ENVS_DIR", dir);
+            }
+            let engine = Engine::new(EngineConfig::new(worker));
+            let result = match command {
+                Command::Plugin {
+                    action:
+                        PluginAction::Python {
+                            id,
+                            method,
+                            params,
+                            env,
+                            project_dir,
+                        },
+                } => match python_request(cli.plugins_dir.as_ref(), &id, &method, &params, project_dir.as_deref()) {
+                    Ok(request) => {
+                        engine
+                            .invoke(Method::PluginsRun, json!({ "request": request, "project": env }))
+                            .await
+                    }
+                    Err(e) => Err(e),
+                },
+                command => execute(&engine, command).await,
+            };
+            engine.shutdown().await;
+            result
+        }
     };
-    let engine = Engine::new(EngineConfig::new(WorkerCommand::python_worker(python)));
-    let result = execute(&engine, cli.command).await;
-    engine.shutdown().await;
     let text = serde_json::to_string_pretty(&result?).map_err(|e| EngineError::Protocol(e.to_string()))?;
     match cli.output_file {
         Some(path) => {
@@ -254,6 +874,133 @@ async fn execute(engine: &Engine, command: Command) -> Result<Value, EngineError
             });
             (Method::StudyValidate, params)
         }
+        Command::Consistency {
+            data,
+            models,
+            no_references,
+            t_tol,
+        } => {
+            let params = json!({
+                "datasets": read_datasets(&data)?, "models": named_models(&models)?,
+                "include_references": !no_references, "t_tol": t_tol,
+            });
+            (Method::ConsistencyAnalyze, params)
+        }
+        Command::Compare {
+            data,
+            models,
+            no_references,
+        } => {
+            let params = json!({
+                "datasets": read_datasets(&data)?, "models": named_models(&models)?,
+                "include_references": !no_references,
+            });
+            (Method::ModelCompare, params)
+        }
+        Command::Project { action } => return project_action(action),
+        Command::History { .. } | Command::Secret { .. } => {
+            return local_action(&command).unwrap_or(Ok(Value::Null));
+        }
+        Command::Plugin { action } => {
+            return plugin_action(&action, None)
+                .unwrap_or_else(|| Err(invalid("run Python plug-ins with `plugin python`")));
+        }
+        Command::Assistant {
+            provider,
+            model,
+            base_url,
+            question,
+        } => {
+            let key = pb_secrets::get(&format!("ai.{provider}")).map_err(|e| invalid(e.to_string()))?;
+            let params = json!({
+                "provider": provider, "model": model, "base_url": base_url, "api_key": key,
+                "messages": [{"role": "user", "content": question}],
+            });
+            (Method::AssistantAsk, params)
+        }
+        Command::Report { spec, out } => {
+            let format = out
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(str::to_ascii_lowercase)
+                .ok_or_else(|| invalid("--out needs an extension (pdf, docx, md, zip)"))?;
+            let result = engine
+                .invoke(
+                    Method::ReportRender,
+                    json!({ "spec": read_json(&spec)?, "format": format }),
+                )
+                .await?;
+            return write_content(&result, &out);
+        }
+        Command::ExportCoolprop { model, out, name, data } => {
+            let datasets = match data {
+                Some(path) => read_datasets(&path)?,
+                None => Value::Null,
+            };
+            let params = json!({ "model": read_model(&model)?, "name": name, "datasets": datasets });
+            let result = engine.invoke(Method::ModelExportCoolProp, params).await?;
+            let verification = result.get("verification").cloned().unwrap_or(Value::Null);
+            if verification.get("identical").and_then(Value::as_bool) != Some(true) {
+                return Err(invalid(format!(
+                    "CoolProp does not reproduce the model: {verification}"
+                )));
+            }
+            let text = result.get("json").and_then(Value::as_str).unwrap_or_default();
+            std::fs::write(&out, text)?;
+            return Ok(json!({ "written": path_string(&out)?, "verification": verification }));
+        }
+        Command::Figure { spec, out, dpi } => {
+            let format = out
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(str::to_ascii_lowercase)
+                .ok_or_else(|| invalid("--out needs an extension (svg, pdf, eps, png, tiff)"))?;
+            let params = json!({ "spec": read_json(&spec)?, "format": format, "dpi": dpi });
+            let result = engine.invoke(Method::FigureRender, params).await?;
+            let content = result
+                .get("content_base64")
+                .and_then(Value::as_str)
+                .ok_or_else(|| EngineError::Protocol("figure.render returned no content".into()))?;
+            let bytes =
+                base64_decode(content).ok_or_else(|| EngineError::Protocol("figure content is not base64".into()))?;
+            std::fs::write(&out, &bytes)?;
+            return Ok(json!({ "written": path_string(&out)?, "bytes": bytes.len(), "format": format }));
+        }
+        Command::Env { action } => match action {
+            EnvAction::Status { project } => (Method::EnvStatus, json!({ "project": project })),
+            EnvAction::Create { project } => (Method::EnvCreate, json!({ "project": project })),
+            EnvAction::Install { project, packages } => {
+                (Method::EnvInstall, json!({ "project": project, "packages": packages }))
+            }
+            EnvAction::Sync { project, lock } => {
+                let lock = std::fs::read_to_string(&lock)?;
+                (Method::EnvSync, json!({ "project": project, "lock": lock }))
+            }
+            EnvAction::Run {
+                project,
+                script,
+                timeout,
+                memory_mb,
+            } => {
+                let code = std::fs::read_to_string(&script)?;
+                let params = json!({ "project": project, "code": code, "timeout": timeout, "memory_mb": memory_mb });
+                (Method::EnvRun, params)
+            }
+        },
+        Command::Components { action } => match action {
+            ComponentsAction::List { registry } => (Method::ComponentsList, json!({ "registry": registry })),
+            ComponentsAction::Install { id, registry } => {
+                (Method::ComponentsInstall, json!({ "id": id, "registry": registry }))
+            }
+            ComponentsAction::InstallFile { archive } => {
+                let bytes = std::fs::read(&archive)?;
+                (
+                    Method::ComponentsInstallFile,
+                    json!({ "content_base64": base64(&bytes) }),
+                )
+            }
+            ComponentsAction::Remove { id } => (Method::ComponentsRemove, json!({ "id": id })),
+        },
         Command::Call { method, params } => {
             let method = Method::from_name(&method).ok_or_else(|| {
                 let known: Vec<&str> = Method::ALL.iter().map(|m| m.name()).collect();
@@ -263,4 +1010,33 @@ async fn execute(engine: &Engine, command: Command) -> Result<Value, EngineError
         }
     };
     engine.invoke(method, params).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::base64;
+
+    #[test]
+    fn base64_matches_rfc_4648_vectors() {
+        let cases = [
+            ("", ""),
+            ("f", "Zg=="),
+            ("fo", "Zm8="),
+            ("foo", "Zm9v"),
+            ("foobar", "Zm9vYmFy"),
+        ];
+        for (plain, encoded) in cases {
+            assert_eq!(base64(plain.as_bytes()), encoded);
+        }
+        assert_eq!(base64(&[0xff, 0xfe, 0x00]), "//4A");
+    }
+
+    #[test]
+    fn base64_decode_inverts_encode() {
+        for plain in [&b""[..], b"f", b"fo", b"foo", b"foobar", &[0xff, 0xfe, 0x00, 0x10]] {
+            assert_eq!(super::base64_decode(&base64(plain)).as_deref(), Some(plain));
+        }
+        assert_eq!(super::base64_decode("abc"), None);
+        assert_eq!(super::base64_decode("ab!="), None);
+    }
 }

@@ -23,6 +23,7 @@ class FitData:
     point_ids: np.ndarray
     dataset_names: tuple[str, ...]
     fluid: str
+    pressure: np.ndarray | None = None  # Pa, when every dataset reports it (used to group repeats into states)
 
     def __len__(self) -> int:
         return len(self.values)
@@ -39,6 +40,7 @@ class FitData:
             self.point_ids[idx],
             self.dataset_names,
             self.fluid,
+            None if self.pressure is None else self.pressure[idx],
         )
 
 
@@ -51,7 +53,7 @@ def fit_data(datasets: Sequence[Dataset], backend: Backend | None = None) -> Fit
     if len(fluids) != 1 or len(quantities) != 1:
         raise DatasetError(f"datasets must share one fluid and quantity (got {sorted(fluids)}, {sorted(quantities)})")
     backend = backend or CoolPropBackend()
-    t, rho, y, u, idx, ids = [], [], [], [], [], []
+    t, rho, y, u, idx, ids, p = [], [], [], [], [], [], []
     for j, d in enumerate(datasets):
         if d.molar_density is not None:
             density = d.molar_density
@@ -70,6 +72,7 @@ def fit_data(datasets: Sequence[Dataset], backend: Backend | None = None) -> Fit
         u.append(None if rel is None else rel / d.coverage_factor)
         idx.append(np.full(len(d), j))
         ids.append(d.point_ids)
+        p.append(d.pressure)
     rel_u = None if any(x is None for x in u) else np.concatenate(u)  # type: ignore[arg-type]
     return FitData(
         np.concatenate(t),
@@ -80,4 +83,5 @@ def fit_data(datasets: Sequence[Dataset], backend: Backend | None = None) -> Fit
         np.concatenate(ids),
         tuple(d.name for d in datasets),
         next(iter(fluids)),
+        None if any(x is None for x in p) else np.concatenate(p),  # type: ignore[arg-type]
     )

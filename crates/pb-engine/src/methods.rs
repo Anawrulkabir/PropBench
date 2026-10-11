@@ -37,10 +37,72 @@ pub enum Method {
     SelectionLock,
     #[serde(rename = "selection.select")]
     SelectionSelect,
+    #[serde(rename = "consistency.analyze")]
+    ConsistencyAnalyze,
+    #[serde(rename = "model.references")]
+    ModelReferences,
+    #[serde(rename = "model.compare")]
+    ModelCompare,
+    #[serde(rename = "components.list")]
+    ComponentsList,
+    #[serde(rename = "components.install")]
+    ComponentsInstall,
+    #[serde(rename = "components.install_file")]
+    ComponentsInstallFile,
+    #[serde(rename = "components.remove")]
+    ComponentsRemove,
+    #[serde(rename = "components.datasets")]
+    ComponentsDatasets,
+    #[serde(rename = "env.status")]
+    EnvStatus,
+    #[serde(rename = "env.create")]
+    EnvCreate,
+    #[serde(rename = "env.install")]
+    EnvInstall,
+    #[serde(rename = "env.sync")]
+    EnvSync,
+    #[serde(rename = "env.run")]
+    EnvRun,
+    #[serde(rename = "worksheet.compute")]
+    WorksheetCompute,
+    #[serde(rename = "curvefit.fit")]
+    CurveFit,
+    #[serde(rename = "curvefit.ftest")]
+    CurveFitFTest,
+    #[serde(rename = "gum.linear")]
+    GumLinear,
+    #[serde(rename = "gum.montecarlo")]
+    GumMonteCarlo,
+    #[serde(rename = "refs.parse")]
+    RefsParse,
+    #[serde(rename = "refs.format")]
+    RefsFormat,
+    #[serde(rename = "refs.doi")]
+    RefsDoi,
+    #[serde(rename = "figure.render")]
+    FigureRender,
+    #[serde(rename = "figure.presets")]
+    FigurePresets,
+    #[serde(rename = "report.render")]
+    ReportRender,
+    #[serde(rename = "model.export_coolprop")]
+    ModelExportCoolProp,
+    #[serde(rename = "assistant.providers")]
+    AssistantProviders,
+    #[serde(rename = "assistant.ask")]
+    AssistantAsk,
+    #[serde(rename = "github.device_start")]
+    GithubDeviceStart,
+    #[serde(rename = "github.device_poll")]
+    GithubDevicePoll,
+    #[serde(rename = "github.push")]
+    GithubPush,
+    #[serde(rename = "plugins.run")]
+    PluginsRun,
 }
 
 impl Method {
-    pub const ALL: [Method; 12] = [
+    pub const ALL: [Method; 43] = [
         Method::Fluids,
         Method::Properties,
         Method::DatasetPreview,
@@ -53,6 +115,37 @@ impl Method {
         Method::StudyValidate,
         Method::SelectionLock,
         Method::SelectionSelect,
+        Method::ConsistencyAnalyze,
+        Method::ModelReferences,
+        Method::ModelCompare,
+        Method::ComponentsList,
+        Method::ComponentsInstall,
+        Method::ComponentsInstallFile,
+        Method::ComponentsRemove,
+        Method::ComponentsDatasets,
+        Method::EnvStatus,
+        Method::EnvCreate,
+        Method::EnvInstall,
+        Method::EnvSync,
+        Method::EnvRun,
+        Method::WorksheetCompute,
+        Method::CurveFit,
+        Method::CurveFitFTest,
+        Method::GumLinear,
+        Method::GumMonteCarlo,
+        Method::RefsParse,
+        Method::RefsFormat,
+        Method::RefsDoi,
+        Method::FigureRender,
+        Method::FigurePresets,
+        Method::ReportRender,
+        Method::ModelExportCoolProp,
+        Method::AssistantProviders,
+        Method::AssistantAsk,
+        Method::GithubDeviceStart,
+        Method::GithubDevicePoll,
+        Method::GithubPush,
+        Method::PluginsRun,
     ];
 
     /// The JSON-RPC method name.
@@ -70,6 +163,37 @@ impl Method {
             Method::StudyValidate => "study.validate",
             Method::SelectionLock => "selection.lock",
             Method::SelectionSelect => "selection.select",
+            Method::ConsistencyAnalyze => "consistency.analyze",
+            Method::ModelReferences => "model.references",
+            Method::ModelCompare => "model.compare",
+            Method::ComponentsList => "components.list",
+            Method::ComponentsInstall => "components.install",
+            Method::ComponentsInstallFile => "components.install_file",
+            Method::ComponentsRemove => "components.remove",
+            Method::ComponentsDatasets => "components.datasets",
+            Method::EnvStatus => "env.status",
+            Method::EnvCreate => "env.create",
+            Method::EnvInstall => "env.install",
+            Method::EnvSync => "env.sync",
+            Method::EnvRun => "env.run",
+            Method::WorksheetCompute => "worksheet.compute",
+            Method::CurveFit => "curvefit.fit",
+            Method::CurveFitFTest => "curvefit.ftest",
+            Method::GumLinear => "gum.linear",
+            Method::GumMonteCarlo => "gum.montecarlo",
+            Method::RefsParse => "refs.parse",
+            Method::RefsFormat => "refs.format",
+            Method::RefsDoi => "refs.doi",
+            Method::FigureRender => "figure.render",
+            Method::FigurePresets => "figure.presets",
+            Method::ReportRender => "report.render",
+            Method::ModelExportCoolProp => "model.export_coolprop",
+            Method::AssistantProviders => "assistant.providers",
+            Method::AssistantAsk => "assistant.ask",
+            Method::GithubDeviceStart => "github.device_start",
+            Method::GithubDevicePoll => "github.device_poll",
+            Method::GithubPush => "github.push",
+            Method::PluginsRun => "plugins.run",
         }
     }
 
@@ -77,11 +201,34 @@ impl Method {
         Method::ALL.into_iter().find(|m| m.name() == name)
     }
 
+    /// Operations that take credentials (API keys, tokens): the shell adds them from the OS keychain, so the UI
+    /// cannot call these directly.
+    pub fn needs_credentials(self) -> bool {
+        matches!(
+            self,
+            Method::AssistantAsk | Method::GithubPush | Method::GithubDevicePoll
+        )
+    }
+
+    /// Operations only the shell may send: those taking credentials, and running a plug-in, which needs the
+    /// package and permission checks of `pb-plugin` first.
+    pub fn shell_only(self) -> bool {
+        self.needs_credentials() || self == Method::PluginsRun
+    }
+
     /// Time limit of one request: fits and validation studies may run long, everything else gets the default.
     pub fn timeout(self, default: Duration) -> Duration {
         match self {
             Method::ModelFit => default.max(Duration::from_secs(15 * 60)),
             Method::StudyValidate => default.max(Duration::from_secs(4 * 60 * 60)),
+            Method::ConsistencyAnalyze | Method::ModelCompare => default.max(Duration::from_secs(10 * 60)),
+            Method::ComponentsInstall | Method::ComponentsInstallFile => default.max(Duration::from_secs(30 * 60)),
+            Method::EnvCreate | Method::EnvInstall | Method::EnvSync => default.max(Duration::from_secs(30 * 60)),
+            Method::CurveFit | Method::GumMonteCarlo | Method::ReportRender => {
+                default.max(Duration::from_secs(15 * 60))
+            }
+            // the script's own time limit (at most a day) applies inside the worker
+            Method::EnvRun | Method::PluginsRun => default.max(Duration::from_secs(24 * 60 * 60)),
             _ => default,
         }
     }
